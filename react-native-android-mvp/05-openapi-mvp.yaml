@@ -1,0 +1,834 @@
+openapi: 3.1.0
+info:
+  title: MyTube React Native Android MVP API
+  version: 1.0.0
+  description: |
+    MVP subset for React Native Android client.
+    Excludes upload/download/scan related endpoints by design.
+    Streaming endpoint `/api/mount-video/{id}` is intentionally excluded from this OpenAPI subset.
+servers:
+  - url: http://localhost:5551
+    description: Local development server
+tags:
+  - name: auth
+  - name: settings
+  - name: videos
+  - name: collections
+  - name: cloud
+  - name: system
+security:
+  - cookieAuth: []
+paths:
+  /api/settings/password-enabled:
+    get:
+      tags: [auth]
+      security: []
+      summary: Check password login status
+      responses:
+        "200":
+          description: Status payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordEnabledResponse"
+
+  /api/settings/passkeys/exists:
+    get:
+      tags: [auth]
+      security: []
+      summary: Check whether passkeys exist
+      responses:
+        "200":
+          description: Passkey existence
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exists]
+                properties:
+                  exists:
+                    type: boolean
+
+  /api/settings/reset-password-cooldown:
+    get:
+      tags: [auth]
+      security: []
+      summary: Get password reset cooldown
+      responses:
+        "200":
+          description: Cooldown in milliseconds
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cooldown]
+                properties:
+                  cooldown:
+                    type: integer
+                    minimum: 0
+
+  /api/settings/verify-admin-password:
+    post:
+      tags: [auth]
+      security: []
+      summary: Login as admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Success or failure payload (cookie set on success)
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LoginSuccess"
+                  - $ref: "#/components/schemas/LoginFailure"
+
+  /api/settings/verify-visitor-password:
+    post:
+      tags: [auth]
+      security: []
+      summary: Login as visitor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Success or failure payload (cookie set on success)
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LoginSuccess"
+                  - $ref: "#/components/schemas/LoginFailure"
+
+  /api/settings/passkeys/authenticate:
+    post:
+      tags: [auth]
+      security: []
+      summary: Start passkey authentication
+      responses:
+        "200":
+          description: Passkey challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [options, challenge]
+                properties:
+                  options:
+                    type: object
+                    additionalProperties: true
+                  challenge:
+                    type: string
+        "400":
+          description: No passkeys available or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/settings/passkeys/authenticate/verify:
+    post:
+      tags: [auth]
+      security: []
+      summary: Verify passkey assertion and create session cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body, challenge]
+              properties:
+                body:
+                  type: object
+                  additionalProperties: true
+                challenge:
+                  type: string
+      responses:
+        "200":
+          description: Authenticated
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSuccess"
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/settings/logout:
+    post:
+      tags: [auth]
+      security: []
+      summary: Logout and clear cookies
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+
+  /api/settings:
+    get:
+      tags: [settings]
+      summary: Get application settings
+      responses:
+        "200":
+          description: Settings object (partially dynamic)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+    post:
+      tags: [settings]
+      summary: Update application settings (admin expected)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, settings]
+                properties:
+                  success:
+                    type: boolean
+                  settings:
+                    $ref: "#/components/schemas/Settings"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+        "403":
+          description: Forbidden by role policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/videos:
+    get:
+      tags: [videos]
+      summary: List videos
+      description: Returns the full video list in one response (no server-side pagination/filtering in current MVP).
+      responses:
+        "200":
+          description: Video list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Video"
+
+  /api/videos/author-channel-url:
+    get:
+      tags: [videos]
+      summary: Resolve channel URL from source URL
+      parameters:
+        - in: query
+          name: sourceUrl
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Channel URL found or null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, channelUrl]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  channelUrl:
+                    type: [string, "null"]
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/videos/{id}:
+    get:
+      tags: [videos]
+      summary: Get video by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Video detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "404":
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/videos/{id}/comments:
+    get:
+      tags: [videos]
+      summary: Get comments of a video
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Comments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+
+  /api/videos/{id}/view:
+    post:
+      tags: [videos]
+      summary: Increment view count
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated view count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+                  viewCount:
+                    type: integer
+        "404":
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/videos/{id}/progress:
+    put:
+      tags: [videos]
+      summary: Update playback progress
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [progress]
+              properties:
+                progress:
+                  type: number
+      responses:
+        "200":
+          description: Progress updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required: [progress]
+                    properties:
+                      progress:
+                        type: number
+                  message:
+                    type: string
+        "404":
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/videos/{id}/rate:
+    post:
+      tags: [videos]
+      summary: Rate video (1 to 5)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+      responses:
+        "200":
+          description: Rated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, video]
+                properties:
+                  success:
+                    type: boolean
+                  video:
+                    $ref: "#/components/schemas/Video"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/collections:
+    get:
+      tags: [collections]
+      summary: List collections
+      responses:
+        "200":
+          description: Collection list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Collection"
+    post:
+      tags: [collections]
+      summary: Create collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                videoId:
+                  type: string
+      responses:
+        "201":
+          description: Collection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Collection"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+        "403":
+          description: Forbidden by role policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/collections/{id}:
+    put:
+      tags: [collections]
+      summary: Update collection
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                videoId:
+                  type: string
+                action:
+                  type: string
+                  enum: [add, remove]
+      responses:
+        "200":
+          description: Updated collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Collection"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+    delete:
+      tags: [collections]
+      summary: Delete collection
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: deleteVideos
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/cloud/signed-url:
+    get:
+      tags: [cloud]
+      summary: Get signed URL for cloud media
+      parameters:
+        - in: query
+          name: filename
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [video, thumbnail]
+      responses:
+        "200":
+          description: Signed URL or cached URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+                  url:
+                    type: string
+                  cached:
+                    type: boolean
+                  message:
+                    type: string
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorPayload"
+
+  /api/system/version:
+    get:
+      tags: [system]
+      summary: Get current and latest version information
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemVersion"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mytube_auth_token
+  schemas:
+    ErrorPayload:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+        recoverable:
+          type: boolean
+      additionalProperties: true
+    SuccessMessage:
+      type: object
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+    PasswordEnabledResponse:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        waitTime:
+          type: integer
+        loginRequired:
+          type: boolean
+        visitorUserEnabled:
+          type: boolean
+        isVisitorPasswordSet:
+          type: boolean
+        passwordLoginAllowed:
+          type: boolean
+        allowResetPassword:
+          type: boolean
+        websiteName:
+          type: string
+    LoginSuccess:
+      type: object
+      required: [success, role]
+      properties:
+        success:
+          type: boolean
+          const: true
+        role:
+          type: string
+          enum: [admin, visitor]
+    LoginFailure:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: false
+        waitTime:
+          type: integer
+        failedAttempts:
+          type: integer
+        message:
+          type: string
+        statusCode:
+          type: integer
+    Subtitle:
+      type: object
+      required: [language, filename, path]
+      properties:
+        language:
+          type: string
+        filename:
+          type: string
+        path:
+          type: string
+    Video:
+      type: object
+      required: [id, title]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        source:
+          type: string
+        sourceUrl:
+          type: string
+        date:
+          type: string
+        addedAt:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        videoPath:
+          type: string
+        thumbnailPath:
+          type: [string, "null"]
+        thumbnailUrl:
+          type: string
+        signedUrl:
+          type: string
+        signedThumbnailUrl:
+          type: string
+        description:
+          type: string
+        duration:
+          type: string
+        fileSize:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        rating:
+          type: number
+        viewCount:
+          type: integer
+        progress:
+          type: number
+        lastPlayedAt:
+          type: integer
+        visibility:
+          type: integer
+        subtitles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Subtitle"
+      additionalProperties: true
+    Comment:
+      type: object
+      required: [id, author, content, date]
+      properties:
+        id:
+          type: string
+        author:
+          type: string
+        content:
+          type: string
+        date:
+          type: string
+        avatar:
+          type: string
+      additionalProperties: true
+    Collection:
+      type: object
+      required: [id, name, videos, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        title:
+          type: string
+        videos:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      additionalProperties: true
+    Settings:
+      type: object
+      properties:
+        loginEnabled:
+          type: boolean
+        isPasswordSet:
+          type: boolean
+        isVisitorPasswordSet:
+          type: boolean
+        language:
+          type: string
+        theme:
+          type: string
+          enum: [light, dark, system]
+        websiteName:
+          type: string
+      additionalProperties: true
+    SystemVersion:
+      type: object
+      required: [currentVersion, latestVersion, releaseUrl, hasUpdate]
+      properties:
+        currentVersion:
+          type: string
+        latestVersion:
+          type: string
+        releaseUrl:
+          type: string
+        hasUpdate:
+          type: boolean
+        error:
+          type: string

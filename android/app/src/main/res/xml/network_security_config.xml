@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Debug/main config: allow cleartext for local/self-hosted development hosts. -->
+    <!-- Release override at src/release/... disables cleartext globally. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

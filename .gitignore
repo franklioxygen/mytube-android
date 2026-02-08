@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+android/app/build/
+android/app/.cxx/
+android/build/
+android/.gradle/
+.gradle/
+ios/build/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Env and secrets (keep .env*.example if you add them)
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# Metro / React Native
+.metro-health-check*
+
+# IDE / OS
+.idea/
+.DS_Store
+*.log
+*.swp
+*.swo
+
+# Testing
+coverage/
+.jest/
+
+# Ignore cursor AI rules
+.cursor/rules/codacy.mdc
