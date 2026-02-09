@@ -19,7 +19,7 @@ This document describes repeat-request behavior, conflict patterns, and de-dup l
 | `POST /api/collections` | Non-idempotent create. Repeated submits create multiple collections. | `400` when required fields are missing. | Apply button lock / one-shot submit to prevent double creation. |
 | `PUT /api/collections/{id}` | Name/add/remove updates are target-state writes; repeating the same operation is effectively idempotent. | `404` collection missing. | Use per-collection write lock and refresh detail/list after success. |
 | `DELETE /api/collections/{id}` | First call deletes; repeat may return not found. | `404` if already deleted or never existed. | After local delete success, treat later `404` as terminal and refresh list. |
-| `POST /api/settings` | Partial-update patch; overlapping writes are last-write-wins per field. Same payload converges to same state. | `400` validation, `401` unauthorized, `403` forbidden. | Serialize settings writes, send changed keys only, and avoid concurrent submits. |
+| `PATCH /api/settings` | Partial-update patch; overlapping writes are last-write-wins per field. Same payload converges to same state. | `400` validation, `401` unauthorized, `403` forbidden. | Serialize settings writes, send changed keys only, and avoid concurrent submits. |
 
 ## 3. Endpoint Behavior Matrix (Download/Subscription, Non-MVP)
 

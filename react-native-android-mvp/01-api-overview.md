@@ -73,7 +73,7 @@ For MVP, if you want mutation features (rate/progress/collection edits/settings 
 ## 4.4 Settings and Version
 
 - `GET /api/settings`
-- `POST /api/settings` (only if your mobile app exposes settings edits)
+- `PATCH /api/settings` (only if your mobile app exposes settings edits)
 - `GET /api/system/version`
 
 ## 5. Media URL Strategy

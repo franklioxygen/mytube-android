@@ -5,7 +5,7 @@ This file defines the current backend contract for settings fields.
 ## 1. Endpoint Basics
 
 - Read: `GET /api/settings`
-- Write: `POST /api/settings` (partial update)
+- Write: `PATCH /api/settings` (partial update)
 
 Response note:
 
@@ -19,7 +19,7 @@ Response note:
 - `admin`: full read/write for whitelisted settings.
 - `visitor`:
   - `GET /api/settings` allowed.
-  - `POST /api/settings` allowed only when body contains only:
+  - `PATCH /api/settings` allowed only when body contains only:
     - `cloudflaredTunnelEnabled`
     - `cloudflaredToken`
 - unauthenticated:

@@ -55,7 +55,7 @@ This file tracks implementation gaps identified during the MVP audit and their r
 
 12. Settings language runtime parity
 - Added settings-backed language sync in `LanguageProvider` so app i18n now follows `/api/settings` `language` on startup/session refresh.
-- Updated Settings screen language picker to edit staged value and persist through `POST /api/settings` (admin/open mode only) instead of local-only toggling.
+- Updated Settings screen language picker to edit staged value and persist through `PATCH /api/settings` (admin/open mode only) instead of local-only toggling.
 - Kept visitor role behavior aligned with settings policy by rendering language as read-only for visitor mode.
 
 13. Explicit transport retry policy lock for `429`

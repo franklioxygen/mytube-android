@@ -156,6 +156,20 @@ export async function apiPut<T>(
   return withInFlightKey(inFlightKey, runRequest);
 }
 
+/** Typed patch; throws AppError on failure. */
+export async function apiPatch<T>(
+  url: string,
+  data?: unknown,
+  inFlightKey?: string
+): Promise<T> {
+  const runRequest = async (): Promise<T> => {
+    const res = await api.patch<RawApiResult<T>>(url, data);
+    return unwrap(res.data);
+  };
+  if (inFlightKey == null) return runRequest();
+  return withInFlightKey(inFlightKey, runRequest);
+}
+
 /** Typed delete; throws AppError on failure. */
 export async function apiDelete<T>(
   url: string,

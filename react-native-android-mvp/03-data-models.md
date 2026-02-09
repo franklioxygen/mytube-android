@@ -131,7 +131,7 @@ export interface Settings {
 }
 ```
 
-For `POST /api/settings`, send only fields your app edits.
+For `PATCH /api/settings`, send only fields your app edits.
 
 ## 4. Interaction Response Models
 

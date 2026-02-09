@@ -217,9 +217,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorPayload"
-    post:
+    patch:
       tags: [settings]
-      summary: Update application settings (admin expected)
+      summary: Partially update application settings (admin expected)
       requestBody:
         required: true
         content:

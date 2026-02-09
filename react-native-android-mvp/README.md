@@ -59,6 +59,6 @@ Additional operational docs (`06`-`10`) are included for Android client hardenin
   - `DELETE /api/collections/:id` (optional)
 - Settings/about
   - `GET /api/settings`
-  - `POST /api/settings` (only fields your app actually edits)
+  - `PATCH /api/settings` (only fields your app actually edits)
   - `GET /api/system/version`
   - `POST /api/settings/logout`
