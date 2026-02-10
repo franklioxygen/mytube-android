@@ -1,0 +1,7 @@
+{
+  "projectMode": "brownfield",
+  "executionMode": "autonomous",
+  "researchMode": false,
+  "primaryAgent": "codex",
+  "fallbackAgent": "claude"
+}

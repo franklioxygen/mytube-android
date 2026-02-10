@@ -37,6 +37,7 @@ interface AuthState {
   loading: boolean;
   error: AppError | null;
   waitTimeMs: number | null;
+  failedAttempts: number | null;
 }
 
 interface AuthContextValue extends AuthState {
@@ -112,10 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading: true,
     error: null,
     waitTimeMs: null,
+    failedAttempts: null,
   });
 
   const refreshAuthConfig = useCallback(async () => {
-    setState(s => ({ ...s, loading: true, error: null }));
+    setState(s => ({ ...s, loading: true, error: null, failedAttempts: null }));
     try {
       const passwordEnabled = await getPasswordEnabled();
       let loginRequired =
@@ -158,6 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: resolvedRole,
         loading: false,
         error: probeError,
+        failedAttempts: null,
       }));
     } catch (e) {
       const err = e as AppError;
@@ -191,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading: false,
         error: startupError,
         loginRequired,
+        failedAttempts: null,
       }));
     }
   }, []);
@@ -202,12 +206,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       safeSetStoredRole(null);
-      setState(s => ({ ...s, role: null, hasValidSession: false }));
+      setState(s => ({
+        ...s,
+        role: null,
+        hasValidSession: false,
+        failedAttempts: null,
+      }));
     });
   }, []);
 
   const loginAsAdmin = useCallback(async (password: string): Promise<boolean> => {
-    setState(s => ({ ...s, error: null, waitTimeMs: null }));
+    setState(s => ({ ...s, error: null, waitTimeMs: null, failedAttempts: null }));
     try {
       const res: LoginResponse = await verifyAdminPassword(password);
       if (isLoginSuccess(res)) {
@@ -218,13 +227,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           hasValidSession: true,
           error: null,
           waitTimeMs: null,
+          failedAttempts: null,
         }));
         return true;
       }
-      const fail = res as { waitTime?: number; message?: string; statusCode?: number };
+      const fail = res as {
+        waitTime?: number;
+        failedAttempts?: number;
+        message?: string;
+        statusCode?: number;
+      };
       setState(s => ({
         ...s,
         waitTimeMs: fail.waitTime ?? null,
+        failedAttempts: fail.failedAttempts ?? null,
         hasValidSession: false,
         error: {
           code: loginFailureErrorCode(fail),
@@ -240,13 +256,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: err,
         hasValidSession: false,
         waitTimeMs: err.waitTimeMs ?? null,
+        failedAttempts: null,
       }));
       return false;
     }
   }, []);
 
   const loginAsVisitor = useCallback(async (password: string): Promise<boolean> => {
-    setState(s => ({ ...s, error: null, waitTimeMs: null }));
+    setState(s => ({ ...s, error: null, waitTimeMs: null, failedAttempts: null }));
     try {
       const res: LoginResponse = await verifyVisitorPassword(password);
       if (isLoginSuccess(res)) {
@@ -257,13 +274,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           hasValidSession: true,
           error: null,
           waitTimeMs: null,
+          failedAttempts: null,
         }));
         return true;
       }
-      const fail = res as { waitTime?: number; message?: string; statusCode?: number };
+      const fail = res as {
+        waitTime?: number;
+        failedAttempts?: number;
+        message?: string;
+        statusCode?: number;
+      };
       setState(s => ({
         ...s,
         waitTimeMs: fail.waitTime ?? null,
+        failedAttempts: fail.failedAttempts ?? null,
         hasValidSession: false,
         error: {
           code: loginFailureErrorCode(fail),
@@ -279,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: err,
         hasValidSession: false,
         waitTimeMs: err.waitTimeMs ?? null,
+        failedAttempts: null,
       }));
       return false;
     }
@@ -295,12 +320,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hasValidSession: false,
         error: null,
         waitTimeMs: null,
+        failedAttempts: null,
       }));
     }
   }, []);
 
   const clearError = useCallback(() => {
-    setState(s => ({ ...s, error: null }));
+    setState(s => ({ ...s, error: null, failedAttempts: null }));
   }, []);
 
   const startPasskeyAuth = useCallback(
@@ -310,7 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithPasskey = useCallback(
     async (credentialResponse: unknown, challenge: string): Promise<boolean> => {
-      setState(s => ({ ...s, error: null, waitTimeMs: null }));
+      setState(s => ({ ...s, error: null, waitTimeMs: null, failedAttempts: null }));
       try {
         const res = await AuthRepository.passkeysAuthenticateVerify(
           credentialResponse as Record<string, unknown>,
@@ -324,13 +350,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             hasValidSession: true,
             error: null,
             waitTimeMs: null,
+            failedAttempts: null,
           }));
           return true;
         }
-        const fail = res as { waitTime?: number; message?: string; statusCode?: number };
+        const fail = res as {
+          waitTime?: number;
+          failedAttempts?: number;
+          message?: string;
+          statusCode?: number;
+        };
         setState(s => ({
           ...s,
           waitTimeMs: fail.waitTime ?? null,
+          failedAttempts: fail.failedAttempts ?? null,
           hasValidSession: false,
           error: {
             code: loginFailureErrorCode(fail),
@@ -346,6 +379,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           error: err,
           hasValidSession: false,
           waitTimeMs: err.waitTimeMs ?? null,
+          failedAttempts: null,
         }));
         return false;
       }

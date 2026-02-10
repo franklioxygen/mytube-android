@@ -30,6 +30,9 @@ function loadEnvModule(options: LoadEnvOptions) {
 
   jest.resetModules();
   jest.doMock('react-native', () => ({
+    Platform: {
+      OS: 'android',
+    },
     NativeModules: {
       SourceCode: {
         scriptURL:

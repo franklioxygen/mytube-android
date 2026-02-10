@@ -2,7 +2,7 @@
  * Home/feed: list videos via VideoRepository and React Query.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,10 @@ function filterVisibleForRole(videos: Video[], role: 'admin' | 'visitor' | null)
 }
 
 export function HomeScreen({ onVideoPress }: HomeScreenProps) {
+  useEffect(() => {
+    console.log('[HomeScreen] Screen mounted');
+  }, []);
+
   const { role } = useAuth();
   const {
     data: videos = [],

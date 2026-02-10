@@ -39,6 +39,7 @@ export function LoginScreen({ onLoginSuccess, onChangeBackendUrl }: LoginScreenP
     loading: authConfigLoading,
     error,
     waitTimeMs,
+    failedAttempts,
     loginAsAdmin,
     loginAsVisitor,
     startPasskeyAuth,
@@ -228,6 +229,12 @@ export function LoginScreen({ onLoginSuccess, onChangeBackendUrl }: LoginScreenP
               <Text style={styles.errorText}>{error.message}</Text>
             )}
 
+            {failedAttempts != null && failedAttempts > 0 && (
+              <Text style={styles.attemptsText}>
+                Failed attempts: {failedAttempts}
+              </Text>
+            )}
+
             {countdown > 0 && (
               <Text style={styles.countdownText}>
                 Retry in {countdown}s
@@ -365,6 +372,11 @@ const styles = StyleSheet.create({
     color: '#fa0',
     marginBottom: 8,
     fontSize: 14,
+  },
+  attemptsText: {
+    color: '#f0b35a',
+    marginBottom: 8,
+    fontSize: 13,
   },
   button: {
     backgroundColor: '#0a7ea4',

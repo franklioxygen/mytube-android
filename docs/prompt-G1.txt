@@ -1,0 +1,70 @@
+You are implementing Gate G1 for this project.
+
+## SPEC-DRIVEN RULES (NON-NEGOTIABLE)
+1. You are implementing ONLY what is specified in the spec document.
+2. Do NOT add features, abstractions, or "improvements" not in the spec.
+3. If the spec is unclear or incomplete, STOP and ask for clarification.
+4. Do NOT guess at requirements. Ever.
+5. Your output will be verified against the acceptance criteria from the spec.
+6. No spec = No implementation. Period.
+
+## TASK-LEVEL DOC UPDATE RULES (NON-NEGOTIABLE)
+After THIS task, you MUST directly update all relevant docs yourself:
+- docs/tasks.md
+- docs/progress.md
+- docs/change-log.md
+- docs/traceability.md
+- docs/test-results.md
+- docs/agent-handoff.md
+
+In docs/agent-handoff.md include:
+- Task summary (what you changed)
+- Spec reference used
+- CLI checks for OpenClaw agent to run
+- Browser/manual checks for OpenClaw agent to run (or N/A)
+- Known risks / caveats
+
+## OUTPUT CONTRACT (STRICT)
+Return a final completion block that includes:
+- STATUS: DONE | BLOCKED
+- TASK: <exact task>
+- SPEC_REF: <exact spec ref>
+- FILES_CHANGED: <list>
+- VALIDATION_RUN: <commands and outcomes>
+- OPENCLAW_VERIFY: <cli checks + browser checks or N/A>
+- RISKS: <explicit list or NONE>
+
+If any required input is missing (especially spec), output STATUS: BLOCKED and do not implement.
+
+## CONSTRAINTS
+- Follow AGENTS.md workflow rules exactly.
+- This run is for ONE task only; do not attempt whole-project implementation in one pass.
+- Do not claim completion without evidence.
+- Implementation must match spec acceptance criteria exactly.
+
+Coding agent: codex
+Project mode: brownfield
+Execution mode: autonomous
+Research mode: false
+Brownfield onboarding requirement: you (coding agent) must directly update onboarding docs: as-is-architecture, system-inventory, dependency-map, legacy-risk-register, compatibility-matrix, migration-plan, characterization-tests.
+
+## TASK INPUTS
+- Task: Review the mytube-android codebase structure, identify components, and assess current implementation state
+- Spec Reference: (not provided for this gate)
+
+Objective: Complete planning artifacts.
+Tasks:
+1) Finalize requirements with testable acceptance criteria.
+2) Capture Definition of Done.
+3) List assumptions and risks.
+4) If research_mode=true, produce docs/research-notes.md with options and recommendation.
+Validations:
+- requirements are testable and unambiguous
+- acceptance criteria map to tests
+Done condition:
+- docs/requirements.md, docs/plan.md, docs/progress.md updated
+
+## WAKE HANDOFF FORMAT (MANDATORY)
+When done, run exactly one wake command that includes: task done + check instructions.
+Format:
+openclaw gateway wake --text "Done: <gate> | task: <short> | handoff: see docs/agent-handoff.md for CLI+Browser checks" --mode now
