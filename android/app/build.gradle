@@ -122,3 +122,11 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// Gradle 9 / newer AGP no longer exposes :app:testClasses.
+// Keep compatibility for IDE/workflow entries that still invoke it.
+tasks.register("testClasses") {
+    group = "verification"
+    description = "Compatibility alias for removed testClasses task."
+    dependsOn("compileDebugUnitTestSources")
+}

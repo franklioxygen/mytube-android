@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Image,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -18,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CollectionRepository, collectionQueryKeys } from '../../../core/repositories';
 import { VideoRepository, videoQueryKeys } from '../../../core/repositories';
 import { getThumbnailUrl } from '../../../core/utils/mediaUrl';
+import { getVideoCardColumns } from '../../../core/utils/layout';
 import { useAuth } from '../../../core/auth/AuthContext';
 import { canMutate } from '../../../core/utils/roleGate';
 import { useSnackbar } from '../../../app/providers';
@@ -34,6 +36,9 @@ function filterVisibleForRole(videos: Video[], role: 'admin' | 'visitor' | null)
 
 export function CollectionDetailScreen({ route }: Props) {
   const navigation = useNavigation<Props['navigation']>();
+  const { width, height } = useWindowDimensions();
+  const numColumns = getVideoCardColumns(width, height);
+  const isGrid = numColumns > 1;
   const { role, loginRequired } = useAuth();
   const queryClient = useQueryClient();
   const { show, showError } = useSnackbar();
@@ -123,7 +128,7 @@ export function CollectionDetailScreen({ route }: Props) {
     ({ item }: { item: Video }) => {
       const thumb = getThumbnailUrl(item);
       return (
-        <View style={styles.cardWrap}>
+        <View style={[styles.cardWrap, isGrid && styles.cardWrapGrid]}>
           <View style={styles.card}>
             <TouchableOpacity
               style={styles.cardTouchable}
@@ -167,7 +172,7 @@ export function CollectionDetailScreen({ route }: Props) {
         </View>
       );
     },
-    [onVideoPress, canEdit, removeMutation]
+    [onVideoPress, canEdit, removeMutation, isGrid]
   );
 
   const keyExtractor = useCallback((item: Video) => item.id, []);
@@ -223,10 +228,13 @@ export function CollectionDetailScreen({ route }: Props) {
         </Text>
       </View>
       <FlatList
+        key={`collection-videos-${numColumns}`}
         data={displayVideos}
+        numColumns={numColumns}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.list}
+        columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
         refreshing={refreshing}
         onRefresh={refetch}
       />
@@ -284,10 +292,18 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  columnWrapper: {
+    justifyContent: 'space-between',
+  },
   cardWrap: {
     marginBottom: 12,
   },
+  cardWrapGrid: {
+    flex: 1,
+    marginHorizontal: 6,
+  },
   card: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#2a2a2a',

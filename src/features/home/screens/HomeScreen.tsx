@@ -11,10 +11,12 @@ import {
   StyleSheet,
   Image,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { VideoRepository, videoQueryKeys } from '../../../core/repositories';
 import { getThumbnailUrl } from '../../../core/utils/mediaUrl';
+import { getVideoCardColumns } from '../../../core/utils/layout';
 import { useAuth } from '../../../core/auth/AuthContext';
 import type { Video } from '../../../types';
 
@@ -30,6 +32,9 @@ function filterVisibleForRole(videos: Video[], role: 'admin' | 'visitor' | null)
 
 export function HomeScreen({ onVideoPress }: HomeScreenProps) {
   const { role } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const numColumns = getVideoCardColumns(width, height);
+  const isGrid = numColumns > 1;
   const {
     data: videos = [],
     isLoading: loading,
@@ -53,35 +58,37 @@ export function HomeScreen({ onVideoPress }: HomeScreenProps) {
     ({ item }: { item: Video }) => {
       const thumb = getThumbnailUrl(item);
       return (
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => onVideoPress(item.id)}
-          activeOpacity={0.7}
-        >
-          {thumb ? (
-            <Image source={{ uri: thumb }} style={styles.thumb} />
-          ) : (
-            <View style={[styles.thumb, styles.thumbPlaceholder]}>
-              <Text style={styles.thumbPlaceholderText}>No thumb</Text>
-            </View>
-          )}
-          <View style={styles.info}>
-            <Text style={styles.title} numberOfLines={2}>
-              {item.title}
-            </Text>
-            {item.author != null && (
-              <Text style={styles.author} numberOfLines={1}>
-                {item.author}
+        <View style={[styles.cardWrap, isGrid && styles.cardWrapGrid]}>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => onVideoPress(item.id)}
+            activeOpacity={0.7}
+          >
+            {thumb ? (
+              <Image source={{ uri: thumb }} style={styles.thumb} />
+            ) : (
+              <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                <Text style={styles.thumbPlaceholderText}>No thumb</Text>
+              </View>
+            )}
+            <View style={styles.info}>
+              <Text style={styles.title} numberOfLines={2}>
+                {item.title}
               </Text>
-            )}
-            {item.duration != null && (
-              <Text style={styles.meta}>{item.duration}</Text>
-            )}
-          </View>
-        </TouchableOpacity>
+              {item.author != null && (
+                <Text style={styles.author} numberOfLines={1}>
+                  {item.author}
+                </Text>
+              )}
+              {item.duration != null && (
+                <Text style={styles.meta}>{item.duration}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
       );
     },
-    [onVideoPress]
+    [onVideoPress, isGrid]
   );
 
   const keyExtractor = useCallback((item: Video) => item.id, []);
@@ -109,10 +116,13 @@ export function HomeScreen({ onVideoPress }: HomeScreenProps) {
   return (
     <View style={styles.container}>
       <FlatList
+        key={`home-videos-${numColumns}`}
         data={displayVideos}
+        numColumns={numColumns}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.list}
+        columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
         refreshing={refreshing}
         onRefresh={() => refetch()}
       />
@@ -154,11 +164,21 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  columnWrapper: {
+    justifyContent: 'space-between',
+  },
+  cardWrap: {
+    marginBottom: 12,
+  },
+  cardWrapGrid: {
+    flex: 1,
+    marginHorizontal: 6,
+  },
   card: {
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
-    marginBottom: 12,
     overflow: 'hidden',
   },
   thumb: {

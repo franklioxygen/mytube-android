@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Image,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,6 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { MainStackParamList } from '../../../app/navigation/RootNavigator';
 import { VideoRepository, videoQueryKeys } from '../../../core/repositories';
 import { getThumbnailUrl } from '../../../core/utils/mediaUrl';
+import { getVideoCardColumns } from '../../../core/utils/layout';
 import { useAuth } from '../../../core/auth/AuthContext';
 import type { Video } from '../../../types';
 
@@ -42,6 +44,9 @@ function getUniqueAuthors(videos: Video[]): string[] {
 
 export function AuthorScreen({ authorName, onVideoPress }: AuthorScreenProps) {
   const { role } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const numColumns = getVideoCardColumns(width, height);
+  const isGrid = numColumns > 1;
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
 
   const {
@@ -99,30 +104,32 @@ export function AuthorScreen({ authorName, onVideoPress }: AuthorScreenProps) {
     ({ item }: { item: Video }) => {
       const thumb = getThumbnailUrl(item);
       return (
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => onVideoPress(item.id)}
-          activeOpacity={0.7}
-        >
-          {thumb ? (
-            <Image source={{ uri: thumb }} style={styles.thumb} />
-          ) : (
-            <View style={[styles.thumb, styles.thumbPlaceholder]}>
-              <Text style={styles.thumbPlaceholderText}>No thumb</Text>
-            </View>
-          )}
-          <View style={styles.info}>
-            <Text style={styles.title} numberOfLines={2}>
-              {item.title}
-            </Text>
-            {item.duration != null && (
-              <Text style={styles.meta}>{item.duration}</Text>
+        <View style={[styles.cardWrap, isGrid && styles.cardWrapGrid]}>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => onVideoPress(item.id)}
+            activeOpacity={0.7}
+          >
+            {thumb ? (
+              <Image source={{ uri: thumb }} style={styles.thumb} />
+            ) : (
+              <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                <Text style={styles.thumbPlaceholderText}>No thumb</Text>
+              </View>
             )}
-          </View>
-        </TouchableOpacity>
+            <View style={styles.info}>
+              <Text style={styles.title} numberOfLines={2}>
+                {item.title}
+              </Text>
+              {item.duration != null && (
+                <Text style={styles.meta}>{item.duration}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
       );
     },
-    [onVideoPress]
+    [onVideoPress, isGrid]
   );
 
   if (loading && videos.length === 0) {
@@ -180,10 +187,13 @@ export function AuthorScreen({ authorName, onVideoPress }: AuthorScreenProps) {
   return (
     <View style={styles.container}>
       <FlatList
+        key={`author-videos-${numColumns}`}
         data={videosByAuthor}
+        numColumns={numColumns}
         renderItem={renderVideoItem}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
+        columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
         refreshing={refreshing}
         onRefresh={() => refetch()}
       />
@@ -230,6 +240,9 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  columnWrapper: {
+    justifyContent: 'space-between',
+  },
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -249,11 +262,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   card: {
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
-    marginBottom: 12,
     overflow: 'hidden',
+  },
+  cardWrap: {
+    marginBottom: 12,
+  },
+  cardWrapGrid: {
+    flex: 1,
+    marginHorizontal: 6,
   },
   thumb: {
     width: 120,

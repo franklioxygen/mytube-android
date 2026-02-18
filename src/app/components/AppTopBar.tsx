@@ -15,6 +15,7 @@ import {
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainStackParamList } from '../navigation/RootNavigator';
 import { MobileMenu } from './MobileMenu';
 import { SettingsRepository, settingsQueryKeys } from '../../core/repositories';
@@ -22,6 +23,7 @@ import { useAuth } from '../../core/auth/AuthContext';
 
 export function AppTopBar() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const insets = useSafeAreaInsets();
   const [menuVisible, setMenuVisible] = useState(false);
   const [inputText, setInputText] = useState('');
   const { passwordEnabled } = useAuth();
@@ -61,7 +63,7 @@ export function AppTopBar() {
   const closeMenu = useCallback(() => setMenuVisible(false), []);
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { height: 60 + insets.top, paddingTop: insets.top }]}>
       <TouchableOpacity
         style={styles.logoWrap}
         onPress={handleGoHome}
