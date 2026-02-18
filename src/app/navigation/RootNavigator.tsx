@@ -55,8 +55,7 @@ function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: '#1a1a1a' },
-        headerTintColor: '#fff',
+        header: renderTopBar,
         tabBarStyle: { backgroundColor: '#1a1a1a' },
         tabBarActiveTintColor: '#0a7ea4',
         tabBarInactiveTintColor: '#888',
