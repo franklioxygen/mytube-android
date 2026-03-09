@@ -12,7 +12,7 @@ import {
   StyleSheet,
   Image,
 } from 'react-native';
-import { CommonActions, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,14 +49,7 @@ export function AppTopBar() {
   }, [inputText, navigation]);
 
   const handleGoHome = useCallback(() => {
-    const parentNavigation = navigation.getParent();
-    if (parentNavigation != null) {
-      parentNavigation.dispatch(
-        CommonActions.navigate('MainTabs', { screen: 'Home' })
-      );
-      return;
-    }
-    navigation.navigate('MainTabs', { screen: 'Home' });
+    navigation.navigate('Home');
   }, [navigation]);
 
   const openMenu = useCallback(() => setMenuVisible(true), []);

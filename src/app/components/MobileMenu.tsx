@@ -22,8 +22,8 @@ const MENU_ITEMS: { label: string; screen: string; params?: object }[] = [
   { label: 'Manage', screen: 'Manage' },
   { label: 'Downloads', screen: 'Downloads' },
   { label: 'Subscriptions', screen: 'Subscriptions' },
-  { label: 'Settings', screen: 'MainTabs', params: { screen: 'Settings' } },
-  { label: 'Collections', screen: 'MainTabs', params: { screen: 'Collections' } },
+  { label: 'Settings', screen: 'Settings' },
+  { label: 'Collections', screen: 'Collections' },
   { label: 'Authors', screen: 'Author' },
   { label: 'Instruction', screen: 'Instruction' },
 ];
@@ -36,11 +36,7 @@ export function MobileMenu({ visible, onClose }: MobileMenuProps) {
       onClose();
       if (!screen) return;
       const nav = navigation as { navigate: (s: string, p?: object) => void };
-      if (screen === 'MainTabs' && params) {
-        nav.navigate('MainTabs', params);
-      } else {
-        nav.navigate(screen, params);
-      }
+      nav.navigate(screen, params);
     },
     [navigation, onClose]
   );

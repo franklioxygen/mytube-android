@@ -179,6 +179,7 @@ export interface Settings {
   showYoutubeSearch?: boolean;
   cloudflaredTunnelEnabled?: boolean;
   cloudflaredToken?: string;
+  autoPlayVideo?: boolean;
   [key: string]: unknown;
 }
 

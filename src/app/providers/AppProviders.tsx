@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from '../../core/auth/AuthContext';
 import { SettingsRepository, settingsQueryKeys } from '../../core/repositories';
 import { SnackbarProvider } from './SnackbarProvider';
 import { LanguageProvider } from './LanguageProvider';
+import { SidebarProvider } from '../../features/home/context/SidebarContext';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -81,7 +82,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <AuthProvider>
         <AppThemeProvider>
           <LanguageProvider>
-            <SnackbarProvider>{children}</SnackbarProvider>
+            <SidebarProvider>
+              <SnackbarProvider>{children}</SnackbarProvider>
+            </SidebarProvider>
           </LanguageProvider>
         </AppThemeProvider>
       </AuthProvider>

@@ -1,13 +1,11 @@
 /**
- * Root navigation: auth gate and main app (tabs + stack).
- * Plan: Auth stack (Login), Main = tabs (Home, Collections, Settings) + stack (VideoDetail, CollectionDetail, etc.).
+ * Root navigation: auth gate and main app stack.
  */
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../../core/auth/AuthContext';
 import { LoginScreen } from '../../features/auth/screens/LoginScreen';
@@ -24,16 +22,12 @@ import { DownloadsScreen } from '../../features/downloads/screens/DownloadsScree
 import { SubscriptionsScreen } from '../../features/subscriptions/screens/SubscriptionsScreen';
 import { AppTopBar } from '../components/AppTopBar';
 
-export type MainTabsParamList = {
-  Home: undefined;
-  Collections: undefined;
-  Settings: undefined;
-};
-
 export type MainStackParamList = {
-  MainTabs: undefined | { screen: keyof MainTabsParamList };
+  Home: undefined;
   VideoDetail: { videoId: string };
   CollectionDetail: { collectionId: string };
+  Collections: undefined;
+  Settings: undefined;
   Author: { authorName?: string };
   Manage: undefined;
   Downloads: undefined;
@@ -47,38 +41,7 @@ interface RootNavigatorProps {
 }
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
-const Tab = createBottomTabNavigator();
 const renderTopBar = () => <AppTopBar />;
-
-function MainTabs() {
-  const { t } = useTranslation();
-  return (
-    <Tab.Navigator
-      screenOptions={{
-        header: renderTopBar,
-        tabBarStyle: { backgroundColor: '#1a1a1a' },
-        tabBarActiveTintColor: '#0a7ea4',
-        tabBarInactiveTintColor: '#888',
-      }}
-    >
-      <Tab.Screen
-        name="Home"
-        component={HomeScreenWrapper}
-        options={{ title: t('home') }}
-      />
-      <Tab.Screen
-        name="Collections"
-        component={CollectionsScreenWrapper}
-        options={{ title: t('collections') }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreenWrapper}
-        options={{ title: t('settings') }}
-      />
-    </Tab.Navigator>
-  );
-}
 
 function HomeScreenWrapper({
   navigation,
@@ -90,22 +53,6 @@ function HomeScreenWrapper({
       onVideoPress={videoId => navigation.navigate('VideoDetail', { videoId })}
     />
   );
-}
-
-function CollectionsScreenWrapper({
-  navigation,
-}: {
-  navigation: { navigate: (name: string, params: { collectionId: string }) => void };
-}) {
-  return (
-    <CollectionsScreen
-      onCollectionPress={id => navigation.navigate('CollectionDetail', { collectionId: id })}
-    />
-  );
-}
-
-function SettingsScreenWrapper() {
-  return <SettingsScreen onLogout={() => {}} />;
 }
 
 function VideoDetailScreenWrapper({
@@ -120,6 +67,18 @@ function VideoDetailScreenWrapper({
       videoId={route.params.videoId}
       onBack={() => navigation.goBack()}
       onAuthorPress={name => navigation.navigate('Author', { authorName: name })}
+    />
+  );
+}
+
+function CollectionsScreenWrapper({
+  navigation,
+}: {
+  navigation: { navigate: (name: string, params: { collectionId: string }) => void };
+}) {
+  return (
+    <CollectionsScreen
+      onCollectionPress={id => navigation.navigate('CollectionDetail', { collectionId: id })}
     />
   );
 }
@@ -163,9 +122,9 @@ function MainStack() {
       }}
     >
       <Stack.Screen
-        name="MainTabs"
-        component={MainTabs}
-        options={{ headerShown: false }}
+        name="Home"
+        component={HomeScreenWrapper}
+        options={{ header: renderTopBar }}
       />
       <Stack.Screen
         name="VideoDetail"
@@ -176,6 +135,16 @@ function MainStack() {
         name="CollectionDetail"
         component={CollectionDetailScreen}
         options={{ title: t('collection') }}
+      />
+      <Stack.Screen
+        name="Collections"
+        component={CollectionsScreenWrapper}
+        options={{ title: t('collections') }}
+      />
+      <Stack.Screen
+        name="Settings"
+        component={() => <SettingsScreen onLogout={() => {}} />}
+        options={{ title: t('settings') }}
       />
       <Stack.Screen
         name="Author"
@@ -238,9 +207,7 @@ export function RootNavigator({ onRequestChangeBackendUrl }: RootNavigatorProps)
             </Text>
             <TouchableOpacity
               style={[styles.actionButton, styles.retryButton]}
-              onPress={() => {
-                void refreshAuthConfig();
-              }}
+              onPress={() => { void refreshAuthConfig(); }}
             >
               <Text style={styles.actionButtonText}>Retry startup</Text>
             </TouchableOpacity>

@@ -51,6 +51,7 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
   const canEditAnySettings = canEditGeneralSettings || canEditCloudflareSettings;
 
   const [editWebsiteName, setEditWebsiteName] = useState('');
+  const [editAutoPlayVideo, setEditAutoPlayVideo] = useState(false);
   const [editTheme, setEditTheme] = useState<ThemeValue>('system');
   const [editCloudflaredTunnelEnabled, setEditCloudflaredTunnelEnabled] = useState(false);
   const [editCloudflaredToken, setEditCloudflaredToken] = useState('');
@@ -95,6 +96,7 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
   useEffect(() => {
     if (settings != null) {
       setEditWebsiteName(settings.websiteName ?? '');
+      setEditAutoPlayVideo(Boolean(settings.autoPlayVideo));
       const nextTheme = settings.theme ?? 'system';
       setEditTheme(
         nextTheme === 'light' || nextTheme === 'dark' || nextTheme === 'system'
@@ -117,6 +119,11 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
       const websiteName = editWebsiteName.trim().slice(0, 15);
       if (websiteName !== (settings.websiteName ?? '')) {
         payload.websiteName = websiteName;
+      }
+
+      const currentAutoPlay = Boolean(settings.autoPlayVideo);
+      if (editAutoPlayVideo !== currentAutoPlay) {
+        payload.autoPlayVideo = editAutoPlayVideo;
       }
 
       const currentTheme = (
@@ -155,6 +162,7 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
     canEditGeneralSettings,
     canEditCloudflareSettings,
     editWebsiteName,
+    editAutoPlayVideo,
     editTheme,
     editLanguage,
     language,
@@ -306,6 +314,18 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 placeholder="Website name"
                 placeholderTextColor="#888"
               />
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Auto-play video</Text>
+                <TouchableOpacity
+                  style={[styles.toggleButton, editAutoPlayVideo && styles.toggleButtonActive]}
+                  onPress={() => setEditAutoPlayVideo(v => !v)}
+                  accessibilityLabel="Toggle auto-play video"
+                >
+                  <Text style={[styles.toggleButtonText, editAutoPlayVideo && styles.toggleButtonTextActive]}>
+                    {editAutoPlayVideo ? 'On' : 'Off'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.label}>Theme</Text>
               <View style={styles.themeRow}>
                 {(['light', 'dark', 'system'] as const).map(theme => (

@@ -27,6 +27,7 @@ import {
   putVideoProgress,
   postVideoRate,
 } from '../../../core/api/endpoints/videos';
+import { SettingsRepository, settingsQueryKeys } from '../../../core/repositories';
 import { getCloudSignedUrl } from '../../../core/api/endpoints/cloud';
 import {
   getCloudVideoRedirectUrl,
@@ -68,6 +69,8 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
   const [addToCollectionModalVisible, setAddToCollectionModalVisible] = useState(false);
   const [video, setVideo] = useState<VideoType | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
   const [playbackUrl, setPlaybackUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +94,12 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
     select: list => (Array.isArray(list) ? list : []),
     enabled: addToCollectionModalVisible,
   });
+
+  const { data: settings } = useQuery({
+    queryKey: settingsQueryKeys.settings,
+    queryFn: () => SettingsRepository.getSettings(),
+  });
+  const autoPlay = Boolean(settings?.autoPlayVideo);
 
   const addToCollectionMutation = useMutation({
     mutationFn: (collectionId: string) =>
@@ -153,9 +162,6 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
       }
       setPlaybackUrl(url);
 
-      const list = await getVideoComments(videoId);
-      setComments(Array.isArray(list) ? list : []);
-
       if (typeof v.sourceUrl === 'string' && v.sourceUrl.trim().length > 0) {
         try {
           const channel = await getAuthorChannelUrl(v.sourceUrl);
@@ -180,6 +186,19 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
   useEffect(() => {
     loadVideo();
   }, [loadVideo]);
+
+  const handleLoadComments = useCallback(async () => {
+    setCommentsLoading(true);
+    try {
+      const list = await getVideoComments(videoId);
+      setComments(Array.isArray(list) ? list : []);
+      setCommentsLoaded(true);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [videoId]);
 
   const flushProgressWrite = useCallback(
     async function flushProgress(force: boolean = false): Promise<void> {
@@ -365,17 +384,13 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-      </View>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {playbackUrl ? (
           <Video
             source={{ uri: playbackUrl }}
             style={styles.video}
             controls
+            paused={!autoPlay}
             onProgress={handleVideoProgressEvent}
             onEnd={handleVideoEnd}
           />
@@ -417,12 +432,10 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
           <View style={styles.ratingRow}>
             <Text style={styles.ratingLabel}>Rate: </Text>
             {[1, 2, 3, 4, 5].map(n => (
-              <TouchableOpacity
-                key={n}
-                style={[styles.star, rating === n && styles.starActive]}
-                onPress={() => handleRate(n)}
-              >
-                <Text style={styles.starText}>{n}</Text>
+              <TouchableOpacity key={n} onPress={() => handleRate(n)} style={styles.starButton}>
+                <Text style={[styles.starText, rating != null && n <= rating && styles.starTextActive]}>
+                  {rating != null && n <= rating ? '★' : '☆'}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -439,7 +452,17 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
 
         <View style={styles.comments}>
           <Text style={styles.commentsTitle}>Comments</Text>
-          {comments.length === 0 ? (
+          {!commentsLoaded ? (
+            <TouchableOpacity
+              style={styles.loadCommentsButton}
+              onPress={() => runAsync(handleLoadComments())}
+              disabled={commentsLoading}
+            >
+              <Text style={styles.loadCommentsButtonText}>
+                {commentsLoading ? 'Loading…' : 'Load comments'}
+              </Text>
+            </TouchableOpacity>
+          ) : comments.length === 0 ? (
             <Text style={styles.noComments}>No comments yet.</Text>
           ) : (
             comments.map(c => (
@@ -522,12 +545,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
-  header: {
-    flexDirection: 'row',
-    padding: 16,
-    paddingTop: 48,
-    backgroundColor: '#1a1a1a',
-  },
   backButton: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -595,21 +612,16 @@ const styles = StyleSheet.create({
     color: '#aaa',
     marginRight: 8,
   },
-  star: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  starActive: {
-    backgroundColor: '#0a7ea4',
+  starButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   starText: {
-    color: '#fff',
-    fontWeight: '600',
+    fontSize: 28,
+    color: '#555',
+  },
+  starTextActive: {
+    color: '#f5c518',
   },
   addToCollectionButton: {
     marginHorizontal: 16,
@@ -687,6 +699,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  loadCommentsButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  loadCommentsButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   noComments: {
     color: '#666',
