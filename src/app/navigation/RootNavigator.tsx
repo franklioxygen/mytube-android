@@ -111,7 +111,7 @@ function ManageScreenWrapper({
   );
 }
 
-function MainStack() {
+function MainStack({ onRequestChangeBackendUrl }: { onRequestChangeBackendUrl?: () => void }) {
   const { t } = useTranslation();
   return (
     <Stack.Navigator
@@ -143,7 +143,12 @@ function MainStack() {
       />
       <Stack.Screen
         name="Settings"
-        component={() => <SettingsScreen onLogout={() => {}} />}
+        component={() => (
+          <SettingsScreen
+            onLogout={() => {}}
+            onChangeBackendUrl={onRequestChangeBackendUrl}
+          />
+        )}
         options={{ title: t('settings') }}
       />
       <Stack.Screen
@@ -233,7 +238,7 @@ export function RootNavigator({ onRequestChangeBackendUrl }: RootNavigatorProps)
           onChangeBackendUrl={onRequestChangeBackendUrl}
         />
       ) : (
-        <MainStack />
+        <MainStack onRequestChangeBackendUrl={onRequestChangeBackendUrl} />
       )}
     </NavigationContainer>
   );

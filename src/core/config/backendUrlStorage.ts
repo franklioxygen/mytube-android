@@ -20,8 +20,12 @@ function createMemoryStorage(): BackendUrlStorage {
 function createStorage(): BackendUrlStorage {
   try {
     const mmkv = require('react-native-mmkv') as {
+      MMKV?: new (config?: { id?: string }) => BackendUrlStorage;
       createMMKV?: (config?: { id?: string }) => BackendUrlStorage;
     };
+    if (typeof mmkv.MMKV === 'function') {
+      return new mmkv.MMKV({ id: 'backend-config-storage' });
+    }
     if (typeof mmkv.createMMKV === 'function') {
       return mmkv.createMMKV({ id: 'backend-config-storage' });
     }

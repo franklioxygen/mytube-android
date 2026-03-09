@@ -155,7 +155,6 @@ function TagsSection({ onSelectFilter }: { onSelectFilter: (tag: string | null) 
 function AuthorsSection({ onSelectFilter }: { onSelectFilter: (author: string | null) => void }) {
   const [expanded, setExpanded] = useState(true);
   const { filter } = useSidebar();
-  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { data: videos = [] } = useQuery({
     queryKey: videoQueryKeys.all,
     queryFn: () => VideoRepository.getVideos(),
@@ -182,10 +181,9 @@ function AuthorsSection({ onSelectFilter }: { onSelectFilter: (author: string | 
 
   const handlePress = useCallback(
     (name: string) => {
-      onSelectFilter(null);
-      navigation.navigate('Author', { authorName: name });
+      onSelectFilter(activeAuthor === name ? null : name);
     },
-    [navigation, onSelectFilter]
+    [onSelectFilter, activeAuthor]
   );
 
   return (
@@ -279,8 +277,9 @@ export function HomeSidebar() {
   const handleAuthorFilter = useCallback(
     (author: string | null) => {
       setFilter(author ? { type: 'author', value: author } : null);
+      close();
     },
-    [setFilter]
+    [setFilter, close]
   );
 
   if (!mounted) return null;

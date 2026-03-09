@@ -34,9 +34,10 @@ type ThemeValue = 'light' | 'dark' | 'system';
 
 interface SettingsScreenProps {
   onLogout: () => void;
+  onChangeBackendUrl?: () => void;
 }
 
-export function SettingsScreen({ onLogout }: SettingsScreenProps) {
+export function SettingsScreen({ onLogout, onChangeBackendUrl }: SettingsScreenProps) {
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
   const { role, loginRequired, logout } = useAuth();
@@ -238,6 +239,11 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
         <TouchableOpacity style={styles.button} onPress={handleLogout}>
           <Text style={styles.buttonText}>{t('logOut')}</Text>
         </TouchableOpacity>
+        {onChangeBackendUrl != null && (
+          <TouchableOpacity style={[styles.button, styles.buttonDanger]} onPress={onChangeBackendUrl}>
+            <Text style={styles.buttonText}>Change backend URL</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -638,6 +644,10 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 8,
     alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  buttonDanger: {
+    backgroundColor: '#5a2222',
   },
   buttonText: {
     color: '#fff',

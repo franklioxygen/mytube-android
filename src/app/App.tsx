@@ -25,17 +25,22 @@ export default function App() {
   const [backendApiUrl, setBackendApiUrl] = React.useState<string | null>(
     bootstrappedBackendUrl
   );
+  const [suggestedUrl, setSuggestedUrl] = React.useState(
+    bootstrappedBackendUrl ?? API_BASE_URL
+  );
 
   const handleSaveBackendUrl = React.useCallback((url: string) => {
     setStoredBackendApiUrl(url);
     setRuntimeApiBaseUrl(url);
     setBackendApiUrl(url);
+    setSuggestedUrl(url);
   }, []);
 
   const handleChangeBackendUrl = React.useCallback(() => {
     setStoredBackendApiUrl(null);
     setRuntimeApiBaseUrl(API_BASE_URL);
     setBackendApiUrl(null);
+    // suggestedUrl keeps the last entered value so the user can edit it
   }, []);
 
   return (
@@ -43,7 +48,7 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
       {backendApiUrl == null ? (
         <BackendUrlSetupScreen
-          suggestedUrl={API_BASE_URL}
+          suggestedUrl={suggestedUrl}
           onSave={handleSaveBackendUrl}
         />
       ) : (

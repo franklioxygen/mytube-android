@@ -15,6 +15,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  useWindowDimensions,
+  Image,
+  ScrollView,
 } from 'react-native';
 import { useAuth } from '../../../core/auth/AuthContext';
 import {
@@ -33,6 +36,9 @@ interface LoginScreenProps {
 
 export function LoginScreen({ onLoginSuccess, onChangeBackendUrl }: LoginScreenProps) {
   const { t } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+
   const {
     role,
     passwordEnabled,
@@ -48,6 +54,7 @@ export function LoginScreen({ onLoginSuccess, onChangeBackendUrl }: LoginScreenP
 
   const [mode, setMode] = useState<LoginMode>('admin');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -168,11 +175,19 @@ export function LoginScreen({ onLoginSuccess, onChangeBackendUrl }: LoginScreenP
     passwordEnabled?.visitorUserEnabled ?? passwordEnabled?.isVisitorPasswordSet ?? false;
   const passwordAllowed =
     passwordEnabled?.passwordLoginAllowed ?? passwordEnabled?.enabled ?? true;
+  const websiteName = passwordEnabled?.websiteName ?? 'MyTube';
+
+  const showPasskeyButton =
+    passkeyStatusLoaded && hasPasskeys && passkeySupported;
+  const showPasskeyUnsupported =
+    passkeyStatusLoaded && hasPasskeys && !passkeySupported;
+  const showSecondarySection =
+    showPasskeyButton || showPasskeyUnsupported || onChangeBackendUrl != null;
 
   if (authConfigLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={CYAN} />
         <Text style={styles.loadingText}>{t('loading')}</Text>
       </View>
     );
@@ -180,182 +195,289 @@ export function LoginScreen({ onLoginSuccess, onChangeBackendUrl }: LoginScreenP
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.card}>
-        <Text style={styles.title}>
-          {passwordEnabled?.websiteName ?? 'MyTube'}
-        </Text>
-        <Text style={styles.subtitle}>Sign in</Text>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          isTablet && styles.scrollTablet,
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[styles.inner, isTablet && styles.innerTablet]}>
 
-        {passwordAllowed ? (
-          <>
-            {visitorEnabled && (
-              <View style={styles.tabs}>
+          {/* Logo + App name */}
+          <View style={styles.logoRow}>
+            <Image
+              source={require('../../../assets/logo.png')}
+              style={styles.logoImg}
+              resizeMode="contain"
+            />
+            <Text style={styles.appName}>{websiteName}</Text>
+          </View>
+
+          {/* Sign in heading */}
+          <View style={styles.headingRow}>
+            <Text style={styles.lockIcon}>🔒</Text>
+            <Text style={styles.headingText}>Sign in</Text>
+          </View>
+
+          {/* Tabs */}
+          {visitorEnabled && (
+            <View style={styles.tabs}>
+              <TouchableOpacity
+                style={styles.tab}
+                onPress={() => setMode('admin')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, mode === 'admin' && styles.tabTextActive]}>
+                  ADMIN
+                </Text>
+                {mode === 'admin' && <View style={styles.tabUnderline} />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.tab}
+                onPress={() => setMode('visitor')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, mode === 'visitor' && styles.tabTextActive]}>
+                  VISITOR USER
+                </Text>
+                {mode === 'visitor' && <View style={styles.tabUnderline} />}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {passwordAllowed ? (
+            <>
+              {/* Password input */}
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password *"
+                  placeholderTextColor="#555"
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                  editable={countdown === 0}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
                 <TouchableOpacity
-                  style={[styles.tab, mode === 'admin' && styles.tabActive]}
-                  onPress={() => setMode('admin')}
+                  style={styles.eyeButton}
+                  onPress={() => setShowPassword(v => !v)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Text style={mode === 'admin' ? styles.tabTextActive : styles.tabText}>
-                    Admin
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tab, mode === 'visitor' && styles.tabActive]}
-                  onPress={() => setMode('visitor')}
-                >
-                  <Text style={mode === 'visitor' ? styles.tabTextActive : styles.tabText}>
-                    Visitor
-                  </Text>
+                  <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
                 </TouchableOpacity>
               </View>
-            )}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#888"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              editable={countdown === 0}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            {error != null && (
-              <Text style={styles.errorText}>{error.message}</Text>
-            )}
-
-            {countdown > 0 && (
-              <Text style={styles.countdownText}>
-                Retry in {countdown}s
-              </Text>
-            )}
-
-            <TouchableOpacity
-              style={[
-                styles.button,
-                (countdown > 0 || submitting || !password.trim()) &&
-                  styles.buttonDisabled,
-              ]}
-              onPress={handleSubmit}
-              disabled={countdown > 0 || submitting || !password.trim()}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Sign in</Text>
+              {error != null && (
+                <Text style={styles.errorText}>{error.message}</Text>
               )}
-            </TouchableOpacity>
-          </>
-        ) : (
-          <Text style={styles.hint}>
-            Password login is disabled on this server.
-          </Text>
-        )}
 
-        {passkeyStatusLoaded && hasPasskeys && passkeySupported && (
-          <>
-            <TouchableOpacity
-              style={[styles.passkeyButton, passkeyLoading && styles.buttonDisabled]}
-              onPress={handlePasskeyPress}
-              disabled={passkeyLoading}
-            >
-              {passkeyLoading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.buttonText}>Sign in with passkey</Text>
+              {countdown > 0 && (
+                <Text style={styles.countdownText}>Retry in {countdown}s</Text>
               )}
-            </TouchableOpacity>
-            <Text style={styles.hint}>
-              Use a passkey-capable runtime/device to continue.
-            </Text>
-          </>
-        )}
-        {passkeyStatusLoaded && hasPasskeys && !passkeySupported && (
-          <Text style={styles.hint}>
-            Passkeys are enabled on this server, but this app/runtime does not support passkeys.
-          </Text>
-        )}
-        {onChangeBackendUrl != null && (
-          <TouchableOpacity style={styles.linkButton} onPress={onChangeBackendUrl}>
-            <Text style={styles.linkText}>Change backend URL</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+
+              {/* Sign in button */}
+              <TouchableOpacity
+                style={[
+                  styles.signInButton,
+                  (countdown > 0 || submitting || !password.trim()) && styles.signInButtonDisabled,
+                ]}
+                onPress={handleSubmit}
+                disabled={countdown > 0 || submitting || !password.trim()}
+                activeOpacity={0.8}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.signInButtonText}>Sign in</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={styles.hint}>Password login is disabled on this server.</Text>
+          )}
+
+          {/* Secondary actions */}
+          {showSecondarySection && (
+            <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {showPasskeyButton && (
+                <TouchableOpacity
+                  style={[styles.outlinedButton, passkeyLoading && styles.outlinedButtonDisabled]}
+                  onPress={handlePasskeyPress}
+                  disabled={passkeyLoading}
+                  activeOpacity={0.7}
+                >
+                  {passkeyLoading ? (
+                    <ActivityIndicator color={CYAN} size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.outlinedButtonIcon}>🖐</Text>
+                      <Text style={styles.outlinedButtonText}>Login with Passkey</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {showPasskeyUnsupported && (
+                <Text style={styles.hint}>
+                  Passkeys are enabled on this server, but this app/runtime does not support passkeys.
+                </Text>
+              )}
+
+              {onChangeBackendUrl != null && (
+                <TouchableOpacity
+                  style={styles.outlinedButton}
+                  onPress={onChangeBackendUrl}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.outlinedButtonIcon}>⚙</Text>
+                  <Text style={styles.outlinedButtonText}>Change Backend URL</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+const CYAN = '#00d9ff';
+
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
+    backgroundColor: '#000',
+  },
+  scroll: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#1a1a1a',
+  },
+  scrollTablet: {
+    alignItems: 'center',
+  },
+  inner: {
+    width: '100%',
+  },
+  innerTablet: {
+    maxWidth: 480,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#000',
   },
   loadingText: {
     color: '#aaa',
     marginTop: 12,
   },
-  card: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 24,
+
+  // Logo + app name
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+    gap: 10,
   },
-  title: {
-    fontSize: 24,
+  logoImg: {
+    width: 48,
+    height: 48,
+  },
+  appName: {
+    fontSize: 32,
     fontWeight: '700',
     color: '#fff',
-    textAlign: 'center',
-    marginBottom: 4,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#aaa',
-    textAlign: 'center',
-    marginBottom: 24,
+
+  // Heading
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+    gap: 10,
   },
+  lockIcon: {
+    fontSize: 24,
+  },
+  headingText: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  // Tabs
   tabs: {
     flexDirection: 'row',
-    marginBottom: 16,
-    gap: 8,
+    marginBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: '#333',
-  },
-  tabActive: {
-    backgroundColor: '#444',
-    borderWidth: 1,
-    borderColor: '#666',
+    paddingBottom: 12,
   },
   tabText: {
-    color: '#aaa',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#555',
+    letterSpacing: 0.5,
   },
   tabTextActive: {
-    color: '#fff',
-    fontWeight: '600',
+    color: CYAN,
+  },
+  tabUnderline: {
+    position: 'absolute',
+    bottom: -1,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: CYAN,
+    borderRadius: 1,
+  },
+
+  // Password input
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 10,
+    marginBottom: 8,
+    backgroundColor: '#0d0d0d',
   },
   input: {
-    backgroundColor: '#333',
-    borderRadius: 8,
-    padding: 14,
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     fontSize: 16,
     color: '#fff',
-    marginBottom: 12,
   },
+  eyeButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eyeIcon: {
+    fontSize: 18,
+  },
+
   errorText: {
     color: '#f66',
     marginBottom: 8,
@@ -366,42 +488,72 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontSize: 14,
   },
-  button: {
-    backgroundColor: '#0a7ea4',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  passkeyButton: {
-    backgroundColor: '#444',
-    borderRadius: 8,
-    padding: 16,
+
+  // Sign in button
+  signInButton: {
+    backgroundColor: CYAN,
+    borderRadius: 50,
+    paddingVertical: 18,
     alignItems: 'center',
     marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#666',
   },
+  signInButtonDisabled: {
+    opacity: 0.5,
+  },
+  signInButtonText: {
+    color: '#000',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+
+  // OR divider
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#222',
+  },
+  dividerText: {
+    color: '#555',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 1,
+  },
+
+  // Outlined buttons (passkey, backend url)
+  outlinedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 10,
+    paddingVertical: 16,
+    marginBottom: 12,
+    gap: 10,
+  },
+  outlinedButtonDisabled: {
+    opacity: 0.5,
+  },
+  outlinedButtonIcon: {
+    fontSize: 18,
+  },
+  outlinedButtonText: {
+    color: CYAN,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
   hint: {
-    color: '#666',
+    color: '#555',
     fontSize: 12,
     textAlign: 'center',
     marginTop: 16,
-  },
-  linkButton: {
-    marginTop: 14,
-    alignItems: 'center',
-  },
-  linkText: {
-    color: '#6cc1e2',
-    fontWeight: '600',
   },
 });
