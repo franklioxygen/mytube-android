@@ -44,7 +44,7 @@ echo "✅ New version: $NEW_VERSION"
 
 # Bump versionCode and versionName in android/app/build.gradle
 echo "🔄 Updating version in android/app/build.gradle..."
-CURRENT_VERSION_CODE=$(grep -oP '(?<=versionCode )\d+' android/app/build.gradle)
+CURRENT_VERSION_CODE=$(grep -o 'versionCode [0-9]*' android/app/build.gradle | awk '{print $2}')
 NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
 sed -i '' "s/versionCode $CURRENT_VERSION_CODE/versionCode $NEW_VERSION_CODE/" android/app/build.gradle
 sed -i '' "s/versionName \".*\"/versionName \"$NEW_VERSION\"/" android/app/build.gradle
