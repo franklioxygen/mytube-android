@@ -67,6 +67,7 @@ function VideoDetailScreenWrapper({
       videoId={route.params.videoId}
       onBack={() => navigation.goBack()}
       onAuthorPress={name => navigation.navigate('Author', { authorName: name })}
+      onVideoPress={id => navigation.navigate('VideoDetail', { videoId: id })}
     />
   );
 }

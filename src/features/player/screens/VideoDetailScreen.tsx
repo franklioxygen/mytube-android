@@ -2,7 +2,7 @@
  * Video detail: metadata, playback, comments, view/progress/rate.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   View,
@@ -15,9 +15,14 @@ import {
   Pressable,
   FlatList,
   Linking,
+  Image,
+  Switch,
+  useWindowDimensions,
 } from 'react-native';
 import type { AppStateStatus } from 'react-native';
 import Video from 'react-native-video';
+import type { VideoRef } from 'react-native-video';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getVideo,
@@ -27,11 +32,17 @@ import {
   putVideoProgress,
   postVideoRate,
 } from '../../../core/api/endpoints/videos';
-import { SettingsRepository, settingsQueryKeys } from '../../../core/repositories';
+import {
+  SettingsRepository,
+  settingsQueryKeys,
+  VideoRepository,
+  videoQueryKeys,
+} from '../../../core/repositories';
 import { getCloudSignedUrl } from '../../../core/api/endpoints/cloud';
 import {
   getCloudVideoRedirectUrl,
   getVideoPlaybackUrl,
+  getThumbnailUrl,
 } from '../../../core/utils/mediaUrl';
 import { useAuth } from '../../../core/auth/AuthContext';
 import { canMutate } from '../../../core/utils/roleGate';
@@ -43,6 +54,19 @@ interface VideoDetailScreenProps {
   videoId: string;
   onBack: () => void;
   onAuthorPress?: (authorName: string) => void;
+  onVideoPress?: (videoId: string) => void;
+}
+
+/** Format duration string: if it's a plain number of seconds, convert to mm:ss or h:mm:ss. */
+function formatDuration(duration: string): string {
+  const secs = Number(duration);
+  if (!Number.isFinite(secs) || duration.includes(':')) return duration;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 const PROGRESS_WRITE_INTERVAL_MS = 10000;
@@ -61,12 +85,19 @@ function getCloudSignedUrlValue(response: unknown): string | null {
     : null;
 }
 
-export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetailScreenProps) {
+export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress }: VideoDetailScreenProps) {
+  const { width, height } = useWindowDimensions();
+  const shortEdge = Math.min(width, height);
+  const isTabletLandscape = shortEdge >= 600 && width > height;
+
   const { role, loginRequired } = useAuth();
   const canWrite = canMutate(role, loginRequired);
   const queryClient = useQueryClient();
   const { show, showError } = useSnackbar();
   const [addToCollectionModalVisible, setAddToCollectionModalVisible] = useState(false);
+  const [speedModalVisible, setSpeedModalVisible] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [autoPlayNext, setAutoPlayNext] = useState(false);
   const [video, setVideo] = useState<VideoType | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -87,6 +118,8 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
   const lastProgressWriteAtRef = useRef(0);
   const ratingInFlightRef = useRef(false);
   const pendingRatingRef = useRef<number | null>(null);
+  const videoRef = useRef<VideoRef>(null);
+  const currentTimeRef = useRef(0);
 
   const { data: collections = [] } = useQuery({
     queryKey: collectionQueryKeys.all,
@@ -100,6 +133,16 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
     queryFn: () => SettingsRepository.getSettings(),
   });
   const autoPlay = Boolean(settings?.autoPlayVideo);
+
+  const { data: allVideos = [] } = useQuery({
+    queryKey: videoQueryKeys.all,
+    queryFn: () => VideoRepository.getVideos(),
+    select: list => (Array.isArray(list) ? list : []),
+  });
+  const upNextVideos = useMemo(
+    () => allVideos.filter(v => v.id !== videoId),
+    [allVideos, videoId]
+  );
 
   const addToCollectionMutation = useMutation({
     mutationFn: (collectionId: string) =>
@@ -301,10 +344,17 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
         runAsync(postViewForPlaybackEvent());
       }
       lastPlaybackTickAtRef.current = now;
+      currentTimeRef.current = currentTime;
       handleProgress(currentTime);
     },
     [handleProgress, postViewForPlaybackEvent]
   );
+
+  const handleSeek = useCallback((offsetSeconds: number) => {
+    const next = Math.max(0, currentTimeRef.current + offsetSeconds);
+    videoRef.current?.seek(next);
+    currentTimeRef.current = next;
+  }, []);
 
   const handleVideoEnd = useCallback(() => {
     handleProgress(0);
@@ -382,98 +432,248 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
 
   if (!video) return null;
 
-  return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {playbackUrl ? (
+  const playerAndMeta = (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      {playbackUrl ? (
+        <>
           <Video
+            ref={videoRef}
             source={{ uri: playbackUrl }}
             style={styles.video}
             controls
             paused={!autoPlay}
+            rate={playbackRate}
             onProgress={handleVideoProgressEvent}
             onEnd={handleVideoEnd}
           />
-        ) : (
-          <View style={[styles.video, styles.videoPlaceholder]}>
-            <Text style={styles.placeholderText}>No playback URL</Text>
+          <View style={styles.seekBar}>
+            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-600)}>
+              <MaterialIcons name="keyboard-double-arrow-left" size={28} color="#fff" />
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-60)}>
+              <MaterialIcons name="fast-rewind" size={28} color="#fff" />
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-10)}>
+              <MaterialIcons name="replay-10" size={28} color="#fff" />
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(10)}>
+              <MaterialIcons name="forward-10" size={28} color="#fff" />
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(60)}>
+              <MaterialIcons name="fast-forward" size={28} color="#fff" />
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(600)}>
+              <MaterialIcons name="keyboard-double-arrow-right" size={28} color="#fff" />
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => setSpeedModalVisible(true)}>
+              <Text style={styles.speedBtnText}>{playbackRate === 1 ? '1×' : `${playbackRate}×`}</Text>
+            </Pressable>
           </View>
-        )}
-
-        <View style={styles.meta}>
-          <Text style={styles.title}>{video.title}</Text>
-          {video.author != null &&
-            (onAuthorPress != null ? (
-              <TouchableOpacity onPress={() => onAuthorPress(video.author!)}>
-                <Text style={styles.author}>{video.author}</Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={styles.author}>{video.author}</Text>
-            ))}
-          {authorChannelUrl != null && (
-            <TouchableOpacity onPress={() => runAsync(handleOpenAuthorChannel())}>
-              <Text style={styles.channelLink}>Open author channel</Text>
-            </TouchableOpacity>
-          )}
-          {video.description != null && (
-            <Text style={styles.description} numberOfLines={5}>
-              {video.description}
-            </Text>
-          )}
-          {video.viewCount != null && (
-            <Text style={styles.metaText}>{video.viewCount} views</Text>
-          )}
-          {progress > 0 && (
-            <Text style={styles.metaText}>Resume from {Math.floor(progress)}s</Text>
-          )}
+        </>
+      ) : (
+        <View style={[styles.video, styles.videoPlaceholder]}>
+          <Text style={styles.placeholderText}>No playback URL</Text>
         </View>
+      )}
 
-        {canWrite && (
-          <View style={styles.ratingRow}>
-            <Text style={styles.ratingLabel}>Rate: </Text>
-            {[1, 2, 3, 4, 5].map(n => (
-              <TouchableOpacity key={n} onPress={() => handleRate(n)} style={styles.starButton}>
-                <Text style={[styles.starText, rating != null && n <= rating && styles.starTextActive]}>
-                  {rating != null && n <= rating ? '★' : '☆'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {canWrite && (
-          <TouchableOpacity
-            style={styles.addToCollectionButton}
-            onPress={() => setAddToCollectionModalVisible(true)}
-          >
-            <Text style={styles.addToCollectionButtonText}>Add to collection</Text>
+      <View style={styles.meta}>
+        <Text style={styles.title}>{video.title}</Text>
+        {video.author != null &&
+          (onAuthorPress != null ? (
+            <TouchableOpacity onPress={() => onAuthorPress(video.author!)}>
+              <Text style={styles.author}>{video.author}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.author}>{video.author}</Text>
+          ))}
+        {authorChannelUrl != null && (
+          <TouchableOpacity onPress={() => runAsync(handleOpenAuthorChannel())}>
+            <Text style={styles.channelLink}>Open author channel</Text>
           </TouchableOpacity>
         )}
+        {video.description != null && (
+          <Text style={styles.description} numberOfLines={5}>
+            {video.description}
+          </Text>
+        )}
+        {video.viewCount != null && (
+          <Text style={styles.metaText}>{video.viewCount} views</Text>
+        )}
+        {progress > 0 && (
+          <Text style={styles.metaText}>Resume from {Math.floor(progress)}s</Text>
+        )}
+      </View>
 
-        <View style={styles.comments}>
-          <Text style={styles.commentsTitle}>Comments</Text>
-          {!commentsLoaded ? (
-            <TouchableOpacity
-              style={styles.loadCommentsButton}
-              onPress={() => runAsync(handleLoadComments())}
-              disabled={commentsLoading}
-            >
-              <Text style={styles.loadCommentsButtonText}>
-                {commentsLoading ? 'Loading…' : 'Load comments'}
+      {canWrite && (
+        <View style={styles.ratingRow}>
+          <Text style={styles.ratingLabel}>Rate: </Text>
+          {[1, 2, 3, 4, 5].map(n => (
+            <TouchableOpacity key={n} onPress={() => handleRate(n)} style={styles.starButton}>
+              <Text style={[styles.starText, rating != null && n <= rating && styles.starTextActive]}>
+                {rating != null && n <= rating ? '★' : '☆'}
               </Text>
             </TouchableOpacity>
-          ) : comments.length === 0 ? (
-            <Text style={styles.noComments}>No comments yet.</Text>
+          ))}
+        </View>
+      )}
+
+      {canWrite && (
+        <TouchableOpacity
+          style={styles.addToCollectionButton}
+          onPress={() => setAddToCollectionModalVisible(true)}
+        >
+          <Text style={styles.addToCollectionButtonText}>Add to collection</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={styles.comments}>
+        <Text style={styles.commentsTitle}>Comments</Text>
+        {!commentsLoaded ? (
+          <TouchableOpacity
+            style={styles.loadCommentsButton}
+            onPress={() => runAsync(handleLoadComments())}
+            disabled={commentsLoading}
+          >
+            <Text style={styles.loadCommentsButtonText}>
+              {commentsLoading ? 'Loading…' : 'Load comments'}
+            </Text>
+          </TouchableOpacity>
+        ) : comments.length === 0 ? (
+          <Text style={styles.noComments}>No comments yet.</Text>
+        ) : (
+          comments.map(c => (
+            <View key={c.id} style={styles.comment}>
+              <Text style={styles.commentAuthor}>{c.author}</Text>
+              <Text style={styles.commentContent}>{c.content}</Text>
+            </View>
+          ))
+        )}
+      </View>
+
+      {!isTabletLandscape && (
+        <View style={styles.upNextInline}>
+          <View style={styles.upNextHeader}>
+            <Text style={styles.upNextTitle}>Up Next</Text>
+            <View style={styles.upNextAutoPlayRow}>
+              <Text style={styles.upNextAutoPlayLabel}>Auto-play Next</Text>
+              <Switch
+                value={autoPlayNext}
+                onValueChange={setAutoPlayNext}
+                trackColor={{ false: '#444', true: '#0a7ea4' }}
+                thumbColor="#fff"
+              />
+            </View>
+          </View>
+          {upNextVideos.length === 0 ? (
+            <Text style={styles.upNextEmpty}>No videos.</Text>
           ) : (
-            comments.map(c => (
-              <View key={c.id} style={styles.comment}>
-                <Text style={styles.commentAuthor}>{c.author}</Text>
-                <Text style={styles.commentContent}>{c.content}</Text>
-              </View>
-            ))
+            upNextVideos.map(item => {
+              const thumb = getThumbnailUrl(item);
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.upNextItem}
+                  onPress={() => onVideoPress?.(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.upNextThumbWrap}>
+                    {thumb ? (
+                      <Image source={{ uri: thumb }} style={styles.upNextThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.upNextThumb, styles.upNextThumbPlaceholder]} />
+                    )}
+                    {item.duration != null && (
+                      <View style={styles.upNextDurationBadge}>
+                        <Text style={styles.upNextDurationText}>{formatDuration(item.duration)}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.upNextInfo}>
+                    <Text style={styles.upNextItemTitle} numberOfLines={2}>{item.title}</Text>
+                    {item.author != null && (
+                      <Text style={styles.upNextItemAuthor} numberOfLines={1}>{item.author}</Text>
+                    )}
+                    <Text style={styles.upNextItemMeta}>
+                      {[item.date, item.viewCount != null ? `${item.viewCount} views` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
-      </ScrollView>
+      )}
+    </ScrollView>
+  );
+
+  const upNextSidebar = (
+    <View style={styles.upNextSidebar}>
+      <View style={styles.upNextHeader}>
+        <Text style={styles.upNextTitle}>Up Next</Text>
+        <View style={styles.upNextAutoPlayRow}>
+          <Text style={styles.upNextAutoPlayLabel}>Auto-play Next</Text>
+          <Switch
+            value={autoPlayNext}
+            onValueChange={setAutoPlayNext}
+            trackColor={{ false: '#444', true: '#0a7ea4' }}
+            thumbColor="#fff"
+          />
+        </View>
+      </View>
+      <FlatList
+        data={upNextVideos}
+        keyExtractor={item => item.id}
+        renderItem={({ item }) => {
+          const thumb = getThumbnailUrl(item);
+          return (
+            <TouchableOpacity
+              style={styles.upNextItem}
+              onPress={() => onVideoPress?.(item.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.upNextThumbWrap}>
+                {thumb ? (
+                  <Image source={{ uri: thumb }} style={styles.upNextThumb} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.upNextThumb, styles.upNextThumbPlaceholder]} />
+                )}
+                {item.duration != null && (
+                  <View style={styles.upNextDurationBadge}>
+                    <Text style={styles.upNextDurationText}>{formatDuration(item.duration)}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.upNextInfo}>
+                <Text style={styles.upNextItemTitle} numberOfLines={2}>{item.title}</Text>
+                {item.author != null && (
+                  <Text style={styles.upNextItemAuthor} numberOfLines={1}>{item.author}</Text>
+                )}
+                <Text style={styles.upNextItemMeta}>
+                  {[item.date, item.viewCount != null ? `${item.viewCount} views` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+        ListEmptyComponent={<Text style={styles.upNextEmpty}>No videos.</Text>}
+      />
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      {isTabletLandscape ? (
+        <View style={styles.tabletRow}>
+          <View style={styles.tabletMain}>{playerAndMeta}</View>
+          {upNextSidebar}
+        </View>
+      ) : (
+        playerAndMeta
+      )}
 
       <Modal
         visible={addToCollectionModalVisible}
@@ -518,6 +718,33 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress }: VideoDetai
                 <Text style={styles.addToCollectionEmpty}>No collections yet.</Text>
               }
             />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={speedModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSpeedModalVisible(false)}
+      >
+        <Pressable style={styles.speedOverlay} onPress={() => setSpeedModalVisible(false)}>
+          <Pressable style={styles.speedModal} onPress={e => e.stopPropagation()}>
+            <Text style={styles.speedModalTitle}>Playback speed</Text>
+            {[0.5, 0.75, 1, 1.25, 1.5, 2, 3].map(speed => (
+              <TouchableOpacity
+                key={speed}
+                style={[styles.speedOption, playbackRate === speed && styles.speedOptionActive]}
+                onPress={() => { setPlaybackRate(speed); setSpeedModalVisible(false); }}
+              >
+                <Text style={[styles.speedOptionText, playbackRate === speed && styles.speedOptionTextActive]}>
+                  {speed === 1 ? '1× (Normal)' : `${speed}×`}
+                </Text>
+                {playbackRate === speed && (
+                  <MaterialIcons name="check" size={18} color="#0a7ea4" />
+                )}
+              </TouchableOpacity>
+            ))}
           </Pressable>
         </Pressable>
       </Modal>
@@ -572,6 +799,70 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     color: '#666',
+  },
+  seekBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#111',
+    paddingVertical: 8,
+    gap: 12,
+  },
+  seekBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seekBtnPressed: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  speedBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  speedOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  speedModal: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 220,
+  },
+  speedModalTitle: {
+    color: '#aaa',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#444',
+  },
+  speedOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  speedOptionActive: {
+    backgroundColor: 'rgba(10,126,164,0.1)',
+  },
+  speedOptionText: {
+    color: '#fff',
+    fontSize: 15,
+  },
+  speedOptionTextActive: {
+    color: '#0a7ea4',
+    fontWeight: '600',
   },
   meta: {
     padding: 16,
@@ -727,5 +1018,110 @@ const styles = StyleSheet.create({
   commentContent: {
     color: '#ccc',
     fontSize: 14,
+  },
+  // Inline Up Next section (portrait / phone)
+  upNextInline: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+    marginTop: 8,
+  },
+  // Tablet landscape two-column layout
+  tabletRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  tabletMain: {
+    flex: 1,
+  },
+  // Up Next sidebar
+  upNextSidebar: {
+    width: 340,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: '#333',
+    backgroundColor: '#1a1a1a',
+  },
+  upNextHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#333',
+  },
+  upNextTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  upNextAutoPlayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  upNextAutoPlayLabel: {
+    color: '#aaa',
+    fontSize: 12,
+  },
+  upNextItem: {
+    flexDirection: 'row',
+    padding: 8,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#2a2a2a',
+  },
+  upNextThumbWrap: {
+    width: 120,
+    aspectRatio: 16 / 9,
+    position: 'relative',
+    backgroundColor: '#000',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  upNextThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  upNextThumbPlaceholder: {
+    backgroundColor: '#2a2a2a',
+  },
+  upNextDurationBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  upNextDurationText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  upNextInfo: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  upNextItemTitle: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 3,
+    lineHeight: 18,
+  },
+  upNextItemAuthor: {
+    color: '#aaa',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  upNextItemMeta: {
+    color: '#666',
+    fontSize: 11,
+  },
+  upNextEmpty: {
+    color: '#666',
+    padding: 16,
+    textAlign: 'center',
   },
 });
