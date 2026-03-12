@@ -10,6 +10,7 @@ import {
   Modal,
   StyleSheet,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
@@ -30,6 +31,9 @@ const MENU_ITEMS: { label: string; screen: string; params?: object }[] = [
 
 export function MobileMenu({ visible, onClose }: MobileMenuProps) {
   const navigation = useNavigation();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+  const menuWidth = isTablet ? Math.min(Math.max(width * 0.38, 320), 420) : undefined;
 
   const handlePress = useCallback(
     (screen: string, params?: object) => {
@@ -49,7 +53,13 @@ export function MobileMenu({ visible, onClose }: MobileMenuProps) {
       onRequestClose={onClose}
     >
       <Pressable style={styles.overlay} onPress={onClose}>
-        <View style={styles.menu}>
+        <View
+          style={[
+            styles.menu,
+            isTablet && styles.menuTablet,
+            menuWidth != null ? { width: menuWidth } : null,
+          ]}
+        >
           <View style={styles.header}>
             <Text style={styles.title}>Menu</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -86,6 +96,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  menuTablet: {
+    alignSelf: 'flex-end',
   },
   header: {
     flexDirection: 'row',

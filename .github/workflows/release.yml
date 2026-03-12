@@ -39,10 +39,22 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon
 
+      - name: Read app version
+        id: app_version
+        run: |
+          version_name=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' android/app/build.gradle | head -n 1)
+          echo "name=$version_name" >> "$GITHUB_OUTPUT"
+
+      - name: Rename release APK
+        run: |
+          mv \
+            android/app/build/outputs/apk/release/app-release.apk \
+            android/app/build/outputs/apk/release/mytube-andriod-client-${{ steps.app_version.outputs.name }}.apk
+
       - name: Create GitHub Release and upload APK
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/*.apk
+          files: android/app/build/outputs/apk/release/mytube-andriod-client-${{ steps.app_version.outputs.name }}.apk
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
