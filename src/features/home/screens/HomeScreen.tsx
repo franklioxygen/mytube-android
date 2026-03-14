@@ -64,6 +64,46 @@ function toMs(d: string | number | undefined): number {
   return isNaN(ms) ? 0 : ms;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+function formatDownloadTime(video: Video, now = Date.now()): string | null {
+  const downloadedAt = toMs(video.addedAt ?? video.createdAt);
+  if (downloadedAt <= 0) return null;
+
+  const elapsed = Math.max(0, now - downloadedAt);
+
+  if (elapsed < HOUR_MS) return 'Just now';
+
+  if (elapsed < 5 * HOUR_MS) {
+    const hours = Math.max(1, Math.floor(elapsed / HOUR_MS));
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+
+  if (elapsed < DAY_MS) return 'Today';
+  if (elapsed < WEEK_MS) return 'This week';
+
+  if (elapsed <= 4 * WEEK_MS) {
+    const weeks = Math.max(1, Math.floor(elapsed / WEEK_MS));
+    return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
+  }
+
+  return new Date(downloadedAt).toLocaleDateString();
+}
+
+function formatVideoCardMeta(video: Video): string | null {
+  const parts: string[] = [];
+  const downloadTime = formatDownloadTime(video);
+
+  if (downloadTime != null) parts.push(downloadTime);
+  if (typeof video.viewCount === 'number' && Number.isFinite(video.viewCount)) {
+    parts.push(`${video.viewCount.toLocaleString()} views`);
+  }
+
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
 function applySort(videos: Video[], option: SortOption): Video[] {
   const arr = [...videos];
   switch (option) {
@@ -425,6 +465,7 @@ export function HomeScreen({ onVideoPress }: HomeScreenProps) {
   const renderItem = useCallback(
     ({ item }: { item: Video }) => {
       const thumb = getThumbnailUrl(item);
+      const metaText = formatVideoCardMeta(item);
       return (
         <View style={[styles.cardWrap, isGrid && { width: cardWidth }]}>
           <TouchableOpacity
@@ -448,11 +489,17 @@ export function HomeScreen({ onVideoPress }: HomeScreenProps) {
             </View>
             <View style={styles.info}>
               <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-              {item.author != null && (
-                <Text style={styles.author} numberOfLines={1}>{item.author}</Text>
-              )}
-              {item.viewCount != null && (
-                <Text style={styles.meta}>{item.viewCount} views</Text>
+              {(item.author != null || metaText != null) && (
+                <View style={styles.metaRow}>
+                  {item.author != null ? (
+                    <Text style={styles.author} numberOfLines={1}>{item.author}</Text>
+                  ) : (
+                    <View style={styles.metaSpacer} />
+                  )}
+                  {metaText != null && (
+                    <Text style={styles.meta} numberOfLines={1}>{metaText}</Text>
+                  )}
+                </View>
               )}
             </View>
           </TouchableOpacity>
@@ -816,6 +863,7 @@ const styles = StyleSheet.create({
   info: {
     paddingTop: 8,
     paddingHorizontal: 2,
+    minHeight: 60,
   },
   title: {
     color: '#fff',
@@ -823,14 +871,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 4,
     lineHeight: 20,
+    minHeight: 40,
   },
   author: {
     color: '#aaa',
     fontSize: 13,
-    marginBottom: 2,
+    flex: 1,
+    marginRight: 8,
   },
   meta: {
     color: '#888',
     fontSize: 12,
+    flexShrink: 0,
+    textAlign: 'right',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 'auto',
+  },
+  metaSpacer: {
+    flex: 1,
   },
 });
