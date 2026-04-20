@@ -98,6 +98,8 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const [speedModalVisible, setSpeedModalVisible] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [autoPlayNext, setAutoPlayNext] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [video, setVideo] = useState<VideoType | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -357,10 +359,27 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   }, []);
 
   const handleVideoEnd = useCallback(() => {
+    setIsPaused(true);
     handleProgress(0);
     pendingProgressRef.current = 0;
     runAsync(flushProgressWrite(true));
   }, [handleProgress, flushProgressWrite]);
+
+  useEffect(() => {
+    setIsPaused(!autoPlay);
+  }, [autoPlay]);
+
+  const handleTogglePlay = useCallback(() => {
+    setIsPaused(p => !p);
+  }, []);
+
+  const handleToggleFullscreen = useCallback(() => {
+    if (isFullscreen) {
+      videoRef.current?.dismissFullscreenPlayer();
+    } else {
+      videoRef.current?.presentFullscreenPlayer();
+    }
+  }, [isFullscreen]);
 
   const handleBackPress = useCallback(() => {
     runAsync(flushProgressWrite(true));
@@ -436,42 +455,62 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       {playbackUrl ? (
         <>
-          <Video
-            ref={videoRef}
-            source={{ uri: playbackUrl }}
-            style={styles.video}
-            controls
-            paused={!autoPlay}
-            rate={playbackRate}
-            onProgress={handleVideoProgressEvent}
-            onEnd={handleVideoEnd}
-          />
-          <View style={styles.seekBar}>
-            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-600)}>
-              <MaterialIcons name="keyboard-double-arrow-left" size={28} color="#fff" />
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-60)}>
-              <MaterialIcons name="fast-rewind" size={28} color="#fff" />
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-10)}>
-              <MaterialIcons name="replay-10" size={28} color="#fff" />
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(10)}>
-              <MaterialIcons name="forward-10" size={28} color="#fff" />
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(60)}>
-              <MaterialIcons name="fast-forward" size={28} color="#fff" />
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(600)}>
-              <MaterialIcons name="keyboard-double-arrow-right" size={28} color="#fff" />
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => setSpeedModalVisible(true)}>
-              <Text style={styles.speedBtnText}>{playbackRate === 1 ? '1×' : `${playbackRate}×`}</Text>
-            </Pressable>
+          <View style={styles.videoContainer}>
+            <Video
+              ref={videoRef}
+              source={{ uri: playbackUrl }}
+              style={styles.video}
+              paused={isPaused}
+              rate={playbackRate}
+              onProgress={handleVideoProgressEvent}
+              onEnd={handleVideoEnd}
+              onFullscreenPlayerDidPresent={() => setIsFullscreen(true)}
+              onFullscreenPlayerDidDismiss={() => setIsFullscreen(false)}
+            />
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={handleTogglePlay} />
+            {isPaused && (
+              <View style={styles.pauseIndicator} pointerEvents="none">
+                <MaterialIcons name="play-arrow" size={72} color="rgba(255,255,255,0.7)" />
+              </View>
+            )}
+          </View>
+          <View style={styles.controlsBar}>
+            <View style={styles.controlsRow}>
+              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={handleTogglePlay}>
+                <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
+              </Pressable>
+              <View style={styles.controlsRowSpacer} />
+              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={handleToggleFullscreen}>
+                <MaterialIcons name={isFullscreen ? 'fullscreen-exit' : 'fullscreen'} size={28} color="#fff" />
+              </Pressable>
+            </View>
+            <View style={styles.seekBar}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-600)}>
+                <MaterialIcons name="keyboard-double-arrow-left" size={28} color="#fff" />
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-60)}>
+                <MaterialIcons name="fast-rewind" size={28} color="#fff" />
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-10)}>
+                <MaterialIcons name="replay-10" size={28} color="#fff" />
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(10)}>
+                <MaterialIcons name="forward-10" size={28} color="#fff" />
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(60)}>
+                <MaterialIcons name="fast-forward" size={28} color="#fff" />
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(600)}>
+                <MaterialIcons name="keyboard-double-arrow-right" size={28} color="#fff" />
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => setSpeedModalVisible(true)}>
+                <Text style={styles.speedBtnText}>{playbackRate === 1 ? '1×' : `${playbackRate}×`}</Text>
+              </Pressable>
+            </View>
           </View>
         </>
       ) : (
-        <View style={[styles.video, styles.videoPlaceholder]}>
+        <View style={[styles.videoContainer, styles.videoPlaceholder]}>
           <Text style={styles.placeholderText}>No playback URL</Text>
         </View>
       )}
@@ -788,10 +827,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 32,
   },
-  video: {
+  videoContainer: {
     width: '100%',
     aspectRatio: 16 / 9,
     backgroundColor: '#000',
+  },
+  video: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000',
+  },
+  pauseIndicator: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   videoPlaceholder: {
     justifyContent: 'center',
@@ -800,11 +849,29 @@ const styles = StyleSheet.create({
   placeholderText: {
     color: '#666',
   },
+  controlsBar: {
+    backgroundColor: '#111',
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 4,
+  },
+  controlBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+  },
+  controlsRowSpacer: {
+    flex: 1,
+  },
   seekBar: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#111',
     paddingVertical: 8,
     gap: 12,
   },
