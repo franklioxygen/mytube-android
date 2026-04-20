@@ -100,6 +100,8 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const [autoPlayNext, setAutoPlayNext] = useState(false);
   const [isPaused, setIsPaused] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
+  const isLoopingRef = useRef(false);
   const [video, setVideo] = useState<VideoType | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -359,6 +361,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   }, []);
 
   const handleVideoEnd = useCallback(() => {
+    if (isLoopingRef.current) return;
     setIsPaused(true);
     handleProgress(0);
     pendingProgressRef.current = 0;
@@ -368,6 +371,10 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   useEffect(() => {
     setIsPaused(!autoPlay);
   }, [autoPlay]);
+
+  useEffect(() => {
+    isLoopingRef.current = isLooping;
+  }, [isLooping]);
 
   const handleTogglePlay = useCallback(() => {
     setIsPaused(p => !p);
@@ -464,6 +471,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               rate={playbackRate}
               onProgress={handleVideoProgressEvent}
               onEnd={handleVideoEnd}
+              repeat={isLooping}
               onFullscreenPlayerDidPresent={() => setIsFullscreen(true)}
               onFullscreenPlayerDidDismiss={() => setIsFullscreen(false)}
             />
@@ -480,6 +488,9 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
                 <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
               </Pressable>
               <View style={styles.controlsRowSpacer} />
+              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={() => setIsLooping(l => !l)}>
+                <MaterialIcons name="repeat" size={28} color={isLooping ? '#0a7ea4' : '#fff'} />
+              </Pressable>
               <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={handleToggleFullscreen}>
                 <MaterialIcons name={isFullscreen ? 'fullscreen-exit' : 'fullscreen'} size={28} color="#fff" />
               </Pressable>
