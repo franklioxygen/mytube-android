@@ -19,6 +19,8 @@ import {
   Switch,
   useWindowDimensions,
   PanResponder,
+  Share,
+  TextInput,
 } from 'react-native';
 import type { AppStateStatus, LayoutChangeEvent } from 'react-native';
 import Video, { TextTrackType, SelectedTrackType } from 'react-native-video';
@@ -32,6 +34,8 @@ import {
   postVideoView,
   putVideoProgress,
   postVideoRate,
+  putVideo,
+  deleteVideo,
 } from '../../../core/api/endpoints/videos';
 import {
   SettingsRepository,
@@ -81,6 +85,29 @@ function formatTime(secs: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+function resolveFromHeight(h: number): string {
+  if (h >= 2160) return '4K';
+  if (h >= 1440) return '1440P';
+  if (h >= 1080) return '1080P';
+  if (h >= 720) return '720P';
+  if (h >= 480) return '480P';
+  if (h >= 360) return '360P';
+  if (h >= 240) return '240P';
+  return `${h}P`;
+}
+
+function sourceLabel(source?: string): string {
+  if (!source) return 'Unknown';
+  switch (source.toLowerCase()) {
+    case 'youtube': return 'YouTube';
+    case 'bilibili': return 'Bilibili';
+    case 'twitch': return 'Twitch';
+    case 'missav': return 'MissAV';
+    case 'local': return 'Local';
+    default: return source.charAt(0).toUpperCase() + source.slice(1);
+  }
+}
+
 const THUMB_SIZE = 14;
 
 const PROGRESS_WRITE_INTERVAL_MS = 10000;
@@ -108,8 +135,14 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const canWrite = canMutate(role, loginRequired);
   const queryClient = useQueryClient();
   const { show, showError } = useSnackbar();
+
+  // Modal states
   const [addToCollectionModalVisible, setAddToCollectionModalVisible] = useState(false);
   const [speedModalVisible, setSpeedModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [tagsModalVisible, setTagsModalVisible] = useState(false);
+
+  // Playback state
   const [playbackRate, setPlaybackRate] = useState(1);
   const [autoPlayNext, setAutoPlayNext] = useState(false);
   const [isPaused, setIsPaused] = useState(true);
@@ -124,6 +157,8 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const durationRef = useRef(0);
   const progressBarLayout = useRef<{ x: number; width: number }>({ x: 0, width: 1 });
   const progressTrackRef = useRef<View>(null);
+
+  // Data state
   const [video, setVideo] = useState<VideoType | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -134,6 +169,16 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const [progress, setProgress] = useState(0);
   const [rating, setRating] = useState<number | null>(null);
   const [authorChannelUrl, setAuthorChannelUrl] = useState<string | null>(null);
+
+  // New feature state
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [descriptionClamped, setDescriptionClamped] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [videoResolution, setVideoResolution] = useState<string | null>(null);
+  const [localTags, setLocalTags] = useState<string[]>([]);
+
+  // Refs
   const mountedRef = useRef(false);
   const lastPlaybackTickAtRef = useRef(0);
   const viewInFlightRef = useRef(false);
@@ -159,6 +204,10 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     queryFn: () => SettingsRepository.getSettings(),
   });
   const autoPlay = Boolean(settings?.autoPlayVideo);
+  const availableTags: string[] = useMemo(
+    () => (Array.isArray((settings as any)?.tags) ? (settings as any).tags : []),
+    [settings]
+  );
 
   const { data: allVideos = [] } = useQuery({
     queryKey: videoQueryKeys.all,
@@ -190,6 +239,11 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     };
   }, []);
 
+  // Sync localTags with video.tags when video loads/changes
+  useEffect(() => {
+    setLocalTags(video?.tags ?? []);
+  }, [video?.tags]);
+
   const loadVideo = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -217,14 +271,12 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
             const res = await getCloudSignedUrl(name, 'video');
             const signedUrl = getCloudSignedUrlValue(res);
             if (signedUrl != null) {
-              // Reuse media URL policy so HTTPS hosts reject downgraded cleartext URLs.
               url = getVideoPlaybackUrl({ ...v, signedUrl });
             }
           } catch {
             // Fallback below keeps details visible when signing endpoint is unavailable.
           }
           if (!url) {
-            // 01-api-overview.md: cloud redirect route fallback.
             url = getCloudVideoRedirectUrl(name);
           }
         }
@@ -388,7 +440,10 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     handleProgress(0);
     pendingProgressRef.current = 0;
     runAsync(flushProgressWrite(true));
-  }, [handleProgress, flushProgressWrite]);
+    if (autoPlayNext && upNextVideos.length > 0 && onVideoPress) {
+      setTimeout(() => onVideoPress(upNextVideos[0].id), 400);
+    }
+  }, [handleProgress, flushProgressWrite, autoPlayNext, upNextVideos, onVideoPress]);
 
   useEffect(() => {
     setIsPaused(!autoPlay);
@@ -410,14 +465,20 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     }
   }, [isFullscreen]);
 
-  const handleLoad = useCallback(({ duration: dur }: { duration: number }) => {
-    setDuration(dur);
-    durationRef.current = dur;
-    const savedProgress = latestProgressRef.current;
-    if (savedProgress > 0) {
-      videoRef.current?.seek(savedProgress);
-    }
-  }, []);
+  const handleLoad = useCallback(
+    ({ duration: dur, naturalSize }: { duration: number; naturalSize?: { width: number; height: number } }) => {
+      setDuration(dur);
+      durationRef.current = dur;
+      if (naturalSize && naturalSize.height > 0) {
+        setVideoResolution(resolveFromHeight(naturalSize.height));
+      }
+      const savedProgress = latestProgressRef.current;
+      if (savedProgress > 0) {
+        videoRef.current?.seek(savedProgress);
+      }
+    },
+    []
+  );
 
   const handleProgressTrackLayout = useCallback((_e: LayoutChangeEvent) => {
     progressTrackRef.current?.measureInWindow((x, _y, w) => {
@@ -484,6 +545,103 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     }
   }, [authorChannelUrl, showError]);
 
+  const handleOpenSourceUrl = useCallback(async () => {
+    const url = video?.sourceUrl;
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showError('Could not open source URL.');
+    }
+  }, [video?.sourceUrl, showError]);
+
+  const handleOpenDownload = useCallback(async () => {
+    if (!video) return;
+    const url = playbackUrl || video.sourceUrl;
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showError('Could not open download URL.');
+    }
+  }, [video, playbackUrl, showError]);
+
+  const handleShare = useCallback(async () => {
+    if (!video) return;
+    try {
+      await Share.share({
+        title: video.title,
+        message: video.sourceUrl || playbackUrl || video.title,
+      });
+    } catch {
+      // user dismissed share sheet
+    }
+  }, [video, playbackUrl]);
+
+  const handleCopyUrl = useCallback(async () => {
+    const url = playbackUrl || video?.sourceUrl || '';
+    if (!url) {
+      showError('No URL available.');
+      return;
+    }
+    try {
+      await Share.share({ message: url });
+    } catch {
+      // user dismissed
+    }
+  }, [playbackUrl, video?.sourceUrl, showError]);
+
+  const handleDeleteVideo = useCallback(async () => {
+    if (!video || !canWrite) return;
+    setIsDeleting(true);
+    try {
+      await deleteVideo(video.id);
+      queryClient.invalidateQueries({ queryKey: videoQueryKeys.all });
+      setDeleteModalVisible(false);
+      onBack();
+    } catch (e) {
+      showError((e as { message?: string }).message ?? 'Failed to delete video');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [video, canWrite, queryClient, onBack, showError]);
+
+  const handleTagsUpdate = useCallback(
+    async (newTags: string[]) => {
+      if (!video || !canWrite) return;
+      const prevTags = localTags;
+      setLocalTags(newTags);
+      try {
+        await putVideo(video.id, { tags: newTags });
+        queryClient.invalidateQueries({ queryKey: videoQueryKeys.detail(video.id) });
+        show('Tags updated.');
+      } catch (e) {
+        setLocalTags(prevTags);
+        showError((e as { message?: string }).message ?? 'Failed to update tags');
+      }
+    },
+    [video, canWrite, localTags, queryClient, show, showError]
+  );
+
+  const handleAddTag = useCallback(
+    (tag: string) => {
+      const trimmed = tag.trim();
+      if (!trimmed || localTags.includes(trimmed)) return;
+      const newTags = [...localTags, trimmed];
+      runAsync(handleTagsUpdate(newTags));
+      setTagInput('');
+    },
+    [localTags, handleTagsUpdate]
+  );
+
+  const handleRemoveTag = useCallback(
+    (tag: string) => {
+      const newTags = localTags.filter(t => t !== tag);
+      runAsync(handleTagsUpdate(newTags));
+    },
+    [localTags, handleTagsUpdate]
+  );
+
   const handleRate = useCallback(
     async function submitLatestRating(value: number) {
       if (!canWrite) return;
@@ -529,6 +687,12 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         ? { type: SelectedTrackType.INDEX, value: 0 }
         : { type: SelectedTrackType.DISABLED },
     [subtitlesEnabled, textTracks.length]
+  );
+
+  // All available tags for autocomplete (union of settings tags + current video tags)
+  const allTagOptions = useMemo(
+    () => Array.from(new Set([...availableTags, ...localTags])).sort(),
+    [availableTags, localTags]
   );
 
   if (loading && !video) {
@@ -648,7 +812,24 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
       )}
 
       <View style={styles.meta}>
+        {/* Title */}
         <Text style={styles.title}>{video.title}</Text>
+
+        {/* Source badge + resolution */}
+        <View style={styles.badgeRow}>
+          {video.source && (
+            <View style={styles.sourceBadge}>
+              <Text style={styles.sourceBadgeText}>{sourceLabel(video.source)}</Text>
+            </View>
+          )}
+          {videoResolution && (
+            <View style={styles.resolutionBadge}>
+              <Text style={styles.resolutionBadgeText}>{videoResolution}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Author */}
         {video.author != null &&
           (onAuthorPress != null ? (
             <TouchableOpacity onPress={() => onAuthorPress(video.author!)}>
@@ -657,21 +838,132 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
           ) : (
             <Text style={styles.author}>{video.author}</Text>
           ))}
+
+        {/* Author channel link */}
         {authorChannelUrl != null && (
           <TouchableOpacity onPress={() => runAsync(handleOpenAuthorChannel())}>
             <Text style={styles.channelLink}>Open author channel</Text>
           </TouchableOpacity>
         )}
+
+        {/* Collapsible description */}
         {video.description != null && (
-          <Text style={styles.description} numberOfLines={5}>
-            {video.description}
-          </Text>
+          <View style={styles.descriptionContainer}>
+            {/* Hidden full text to detect overflow */}
+            <Text
+              style={[styles.description, styles.descriptionHidden]}
+              onTextLayout={e => {
+                if (!descriptionExpanded) {
+                  setDescriptionClamped(e.nativeEvent.lines.length > 3);
+                }
+              }}
+            >
+              {video.description}
+            </Text>
+            <Text
+              style={styles.description}
+              numberOfLines={descriptionExpanded ? undefined : 3}
+            >
+              {video.description}
+            </Text>
+            {descriptionClamped && (
+              <TouchableOpacity
+                onPress={() => setDescriptionExpanded(e => !e)}
+                style={styles.descriptionToggle}
+              >
+                <MaterialIcons
+                  name={descriptionExpanded ? 'expand-less' : 'expand-more'}
+                  size={18}
+                  color="#0a7ea4"
+                />
+                <Text style={styles.descriptionToggleText}>
+                  {descriptionExpanded ? 'Collapse' : 'Show more'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
+
+        {/* Source links row */}
+        <View style={styles.linksRow}>
+          {video.sourceUrl && (
+            <TouchableOpacity style={styles.linkBtn} onPress={() => runAsync(handleOpenSourceUrl())}>
+              <MaterialIcons name="link" size={15} color="#0a7ea4" />
+              <Text style={styles.linkBtnText}>Source</Text>
+            </TouchableOpacity>
+          )}
+          {(playbackUrl || video.sourceUrl) && (
+            <TouchableOpacity style={styles.linkBtn} onPress={() => runAsync(handleOpenDownload())}>
+              <MaterialIcons name="download" size={15} color="#0a7ea4" />
+              <Text style={styles.linkBtnText}>Download</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Action buttons row */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleCopyUrl())}>
+            <MaterialIcons name="content-copy" size={20} color="#aaa" />
+            <Text style={styles.actionBtnText}>Copy URL</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleShare())}>
+            <MaterialIcons name="share" size={20} color="#aaa" />
+            <Text style={styles.actionBtnText}>Share</Text>
+          </TouchableOpacity>
+          {canWrite && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnDanger]}
+              onPress={() => setDeleteModalVisible(true)}
+            >
+              <MaterialIcons name="delete" size={20} color="#f66" />
+              <Text style={[styles.actionBtnText, styles.actionBtnTextDanger]}>Delete</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Metadata */}
         {video.viewCount != null && (
           <Text style={styles.metaText}>{video.viewCount} views</Text>
         )}
         {progress > 0 && (
           <Text style={styles.metaText}>Resume from {Math.floor(progress)}s</Text>
+        )}
+
+        {/* Tags */}
+        {canWrite && (
+          <TouchableOpacity
+            style={styles.tagsRow}
+            onPress={() => setTagsModalVisible(true)}
+          >
+            <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
+            {localTags.length === 0 ? (
+              <Text style={styles.tagsPlaceholder}>Add tags…</Text>
+            ) : (
+              <View style={styles.tagsChips}>
+                {localTags.map(tag => (
+                  <View key={tag} style={styles.tagChip}>
+                    <Text style={styles.tagChipText}>{tag}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveTag(tag)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                      <MaterialIcons name="close" size={12} color="#aaa" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <MaterialIcons name="add" size={16} color="#888" />
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+        {!canWrite && localTags.length > 0 && (
+          <View style={styles.tagsRow}>
+            <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
+            <View style={styles.tagsChips}>
+              {localTags.map(tag => (
+                <View key={tag} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
         )}
       </View>
 
@@ -846,6 +1138,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         playerAndMeta
       )}
 
+      {/* Add to collection modal */}
       <Modal
         visible={addToCollectionModalVisible}
         transparent
@@ -893,6 +1186,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         </Pressable>
       </Modal>
 
+      {/* Speed modal */}
       <Modal
         visible={speedModalVisible}
         transparent
@@ -916,6 +1210,123 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
                 )}
               </TouchableOpacity>
             ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <Pressable style={styles.deleteOverlay} onPress={() => setDeleteModalVisible(false)}>
+          <Pressable style={styles.deleteModal} onPress={e => e.stopPropagation()}>
+            <Text style={styles.deleteModalTitle}>Delete video?</Text>
+            <Text style={styles.deleteModalBody}>
+              This will permanently delete "{video.title}". This action cannot be undone.
+            </Text>
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity
+                style={styles.deleteCancelBtn}
+                onPress={() => setDeleteModalVisible(false)}
+              >
+                <Text style={styles.deleteCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteConfirmBtn, isDeleting && styles.deleteConfirmBtnDisabled]}
+                onPress={() => runAsync(handleDeleteVideo())}
+                disabled={isDeleting}
+              >
+                <Text style={styles.deleteConfirmBtnText}>
+                  {isDeleting ? 'Deleting…' : 'Delete'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Tags modal */}
+      <Modal
+        visible={tagsModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTagsModalVisible(false)}
+      >
+        <Pressable style={styles.tagsOverlay} onPress={() => setTagsModalVisible(false)}>
+          <Pressable style={styles.tagsModal} onPress={e => e.stopPropagation()}>
+            <View style={styles.tagsModalHeader}>
+              <Text style={styles.tagsModalTitle}>Tags</Text>
+              <TouchableOpacity onPress={() => setTagsModalVisible(false)}>
+                <MaterialIcons name="close" size={22} color="#aaa" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Current tags */}
+            <View style={styles.tagsModalCurrentSection}>
+              <Text style={styles.tagsModalSectionLabel}>Current tags</Text>
+              {localTags.length === 0 ? (
+                <Text style={styles.tagsModalEmpty}>No tags yet.</Text>
+              ) : (
+                <View style={styles.tagsChips}>
+                  {localTags.map(tag => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={styles.tagChipRemovable}
+                      onPress={() => handleRemoveTag(tag)}
+                    >
+                      <Text style={styles.tagChipText}>{tag}</Text>
+                      <MaterialIcons name="close" size={12} color="#aaa" style={{ marginLeft: 3 }} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Add new tag input */}
+            <View style={styles.tagsInputRow}>
+              <TextInput
+                style={styles.tagsInput}
+                value={tagInput}
+                onChangeText={setTagInput}
+                placeholder="Add a tag…"
+                placeholderTextColor="#666"
+                returnKeyType="done"
+                onSubmitEditing={() => handleAddTag(tagInput)}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.tagsInputAddBtn}
+                onPress={() => handleAddTag(tagInput)}
+                disabled={!tagInput.trim()}
+              >
+                <MaterialIcons name="add" size={22} color={tagInput.trim() ? '#0a7ea4' : '#555'} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Suggested tags from settings */}
+            {allTagOptions.filter(t => !localTags.includes(t)).length > 0 && (
+              <View style={styles.tagsModalSuggestSection}>
+                <Text style={styles.tagsModalSectionLabel}>Suggestions</Text>
+                <View style={styles.tagsChips}>
+                  {allTagOptions
+                    .filter(t => !localTags.includes(t))
+                    .filter(t => !tagInput || t.toLowerCase().includes(tagInput.toLowerCase()))
+                    .map(tag => (
+                      <TouchableOpacity
+                        key={tag}
+                        style={styles.tagSuggestionChip}
+                        onPress={() => handleAddTag(tag)}
+                      >
+                        <Text style={styles.tagSuggestionText}>{tag}</Text>
+                      </TouchableOpacity>
+                    ))}
+                </View>
+              </View>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -1114,6 +1525,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 8,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  sourceBadge: {
+    backgroundColor: '#2a3a4a',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  sourceBadgeText: {
+    color: '#5bc4e8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  resolutionBadge: {
+    backgroundColor: '#1e3a1e',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  resolutionBadgeText: {
+    color: '#5be85b',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   author: {
     color: '#aaa',
     fontSize: 14,
@@ -1125,14 +1563,117 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
+  descriptionContainer: {
+    marginBottom: 10,
+  },
+  descriptionHidden: {
+    position: 'absolute',
+    opacity: 0,
+    zIndex: -1,
+  },
   description: {
     color: '#ccc',
     fontSize: 14,
-    marginBottom: 8,
+    lineHeight: 20,
+  },
+  descriptionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  descriptionToggleText: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  linksRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 10,
+  },
+  linkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  linkBtnText: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#444',
+  },
+  actionBtnDanger: {
+    borderColor: '#5a2222',
+  },
+  actionBtnText: {
+    color: '#aaa',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  actionBtnTextDanger: {
+    color: '#f66',
   },
   metaText: {
     color: '#888',
     fontSize: 12,
+    marginBottom: 4,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 8,
+    paddingVertical: 4,
+  },
+  tagsPlaceholder: {
+    color: '#666',
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  tagsChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    alignItems: 'center',
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#2a3a4a',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  tagChipRemovable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a3a4a',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  tagChipText: {
+    color: '#5bc4e8',
+    fontSize: 12,
+    fontWeight: '500',
   },
   ratingRow: {
     flexDirection: 'row',
@@ -1260,13 +1801,11 @@ const styles = StyleSheet.create({
     color: '#ccc',
     fontSize: 14,
   },
-  // Inline Up Next section (portrait / phone)
   upNextInline: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#333',
     marginTop: 8,
   },
-  // Tablet landscape two-column layout
   tabletRow: {
     flex: 1,
     flexDirection: 'row',
@@ -1274,7 +1813,6 @@ const styles = StyleSheet.create({
   tabletMain: {
     flex: 1,
   },
-  // Up Next sidebar
   upNextSidebar: {
     width: 340,
     borderLeftWidth: StyleSheet.hairlineWidth,
@@ -1364,5 +1902,134 @@ const styles = StyleSheet.create({
     color: '#666',
     padding: 16,
     textAlign: 'center',
+  },
+  // Delete modal
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  deleteModal: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+  },
+  deleteModalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  deleteModalBody: {
+    color: '#ccc',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  deleteCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#333',
+    borderRadius: 8,
+  },
+  deleteCancelBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteConfirmBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#c0392b',
+    borderRadius: 8,
+  },
+  deleteConfirmBtnDisabled: {
+    opacity: 0.5,
+  },
+  deleteConfirmBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  // Tags modal
+  tagsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  tagsModal: {
+    backgroundColor: '#222',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  tagsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tagsModalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  tagsModalCurrentSection: {
+    marginBottom: 14,
+  },
+  tagsModalSuggestSection: {
+    marginTop: 12,
+  },
+  tagsModalSectionLabel: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  tagsModalEmpty: {
+    color: '#555',
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  tagsInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#333',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  tagsInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 14,
+    paddingVertical: 10,
+  },
+  tagsInputAddBtn: {
+    padding: 4,
+  },
+  tagSuggestionChip: {
+    backgroundColor: '#333',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#555',
+  },
+  tagSuggestionText: {
+    color: '#ccc',
+    fontSize: 12,
   },
 });

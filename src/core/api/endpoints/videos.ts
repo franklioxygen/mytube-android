@@ -2,7 +2,7 @@
  * Video endpoints per 01-api-overview.md.
  */
 
-import { apiGet, apiPost, apiPut } from '../client';
+import { apiGet, apiPost, apiPut, apiDelete } from '../client';
 import { buildInFlightKey } from '../inFlight';
 import type { Video, Comment, ViewIncrementResponse, RateResponse } from '../../../types';
 
@@ -57,4 +57,15 @@ export function postVideoRate(
     { rating },
     buildInFlightKey('POST', path)
   );
+}
+
+export function putVideo(
+  id: string,
+  data: Partial<Video>
+): Promise<{ success: boolean; video: Video }> {
+  return apiPut<{ success: boolean; video: Video }>(`/videos/${id}`, data);
+}
+
+export function deleteVideo(id: string): Promise<{ success: boolean }> {
+  return apiDelete<{ success: boolean }>(`/videos/${id}`);
 }
