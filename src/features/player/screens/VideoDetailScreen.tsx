@@ -18,8 +18,9 @@ import {
   Image,
   Switch,
   useWindowDimensions,
+  PanResponder,
 } from 'react-native';
-import type { AppStateStatus } from 'react-native';
+import type { AppStateStatus, LayoutChangeEvent } from 'react-native';
 import Video, { TextTrackType, SelectedTrackType } from 'react-native-video';
 import type { VideoRef, TextTracks } from 'react-native-video';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -70,6 +71,18 @@ function formatDuration(duration: string): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+function formatTime(secs: number): string {
+  const s = Math.max(0, Math.floor(secs));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
+  const ss = String(sec).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+const THUMB_SIZE = 14;
+
 const PROGRESS_WRITE_INTERVAL_MS = 10000;
 const VIEW_RESUME_GAP_MS = 5000;
 
@@ -104,6 +117,13 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const [isLooping, setIsLooping] = useState(false);
   const isLoopingRef = useRef(false);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekRatio, setSeekRatio] = useState(0);
+  const [trackWidth, setTrackWidth] = useState(1);
+  const durationRef = useRef(0);
+  const progressBarLayout = useRef<{ x: number; width: number }>({ x: 0, width: 1 });
+  const progressTrackRef = useRef<View>(null);
   const [video, setVideo] = useState<VideoType | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -390,6 +410,61 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     }
   }, [isFullscreen]);
 
+  const handleLoad = useCallback(({ duration: dur }: { duration: number }) => {
+    setDuration(dur);
+    durationRef.current = dur;
+    const savedProgress = latestProgressRef.current;
+    if (savedProgress > 0) {
+      videoRef.current?.seek(savedProgress);
+    }
+  }, []);
+
+  const handleProgressTrackLayout = useCallback((_e: LayoutChangeEvent) => {
+    progressTrackRef.current?.measureInWindow((x, _y, w) => {
+      const safeWidth = w > 0 ? w : 1;
+      progressBarLayout.current = { x, width: safeWidth };
+      setTrackWidth(safeWidth);
+    });
+  }, []);
+
+  const progressPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: evt => {
+        const ratio = Math.max(
+          0,
+          Math.min(1, (evt.nativeEvent.pageX - progressBarLayout.current.x) / progressBarLayout.current.width)
+        );
+        setIsSeeking(true);
+        setSeekRatio(ratio);
+      },
+      onPanResponderMove: evt => {
+        const ratio = Math.max(
+          0,
+          Math.min(1, (evt.nativeEvent.pageX - progressBarLayout.current.x) / progressBarLayout.current.width)
+        );
+        setSeekRatio(ratio);
+      },
+      onPanResponderRelease: evt => {
+        const ratio = Math.max(
+          0,
+          Math.min(1, (evt.nativeEvent.pageX - progressBarLayout.current.x) / progressBarLayout.current.width)
+        );
+        setIsSeeking(false);
+        setSeekRatio(ratio);
+        if (durationRef.current > 0) {
+          const seekTime = ratio * durationRef.current;
+          videoRef.current?.seek(seekTime);
+          currentTimeRef.current = seekTime;
+        }
+      },
+      onPanResponderTerminate: () => {
+        setIsSeeking(false);
+      },
+    })
+  ).current;
+
   const handleBackPress = useCallback(() => {
     runAsync(flushProgressWrite(true));
     onBack();
@@ -478,6 +553,10 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
 
   if (!video) return null;
 
+  const displayRatio = isSeeking ? seekRatio : duration > 0 ? progress / duration : 0;
+  const displayTime = isSeeking ? seekRatio * duration : progress;
+  const thumbLeft = Math.max(0, displayRatio * trackWidth - THUMB_SIZE / 2);
+
   const playerAndMeta = (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       {playbackUrl ? (
@@ -491,6 +570,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               rate={playbackRate}
               repeat={isLooping}
               selectedTextTrack={selectedTextTrack}
+              onLoad={handleLoad}
               onProgress={handleVideoProgressEvent}
               onEnd={handleVideoEnd}
               onFullscreenPlayerDidPresent={() => setIsFullscreen(true)}
@@ -504,6 +584,21 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
             )}
           </View>
           <View style={styles.controlsBar}>
+            <View style={styles.progressRow}>
+              <Text style={styles.timeText}>{formatTime(displayTime)}</Text>
+              <View
+                ref={progressTrackRef}
+                style={styles.progressWrapper}
+                onLayout={handleProgressTrackLayout}
+                {...progressPanResponder.panHandlers}
+              >
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, displayRatio * 100))}%` }]} />
+                </View>
+                <View style={[styles.progressThumb, { left: thumbLeft }]} />
+              </View>
+              <Text style={[styles.timeText, styles.timeTextRight]}>{duration > 0 ? formatTime(duration) : '--:--'}</Text>
+            </View>
             <View style={styles.controlsRow}>
               <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={handleTogglePlay}>
                 <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
@@ -904,6 +999,48 @@ const styles = StyleSheet.create({
   },
   controlsRowSpacer: {
     flex: 1,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 2,
+    gap: 8,
+  },
+  timeText: {
+    color: '#aaa',
+    fontSize: 12,
+    minWidth: 36,
+    textAlign: 'left',
+  },
+  timeTextRight: {
+    textAlign: 'right',
+  },
+  progressWrapper: {
+    flex: 1,
+    height: 20,
+    justifyContent: 'center',
+  },
+  progressTrack: {
+    height: 4,
+    backgroundColor: '#444',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#0a7ea4',
+    borderRadius: 2,
+  },
+  progressThumb: {
+    position: 'absolute',
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: '#0a7ea4',
+    top: '50%',
+    marginTop: -(THUMB_SIZE / 2),
   },
   seekBar: {
     flexDirection: 'row',
