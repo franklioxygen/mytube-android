@@ -20,8 +20,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import type { AppStateStatus } from 'react-native';
-import Video from 'react-native-video';
-import type { VideoRef } from 'react-native-video';
+import Video, { TextTrackType, SelectedTrackType } from 'react-native-video';
+import type { VideoRef, TextTracks } from 'react-native-video';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -44,6 +44,7 @@ import {
   getVideoPlaybackUrl,
   getThumbnailUrl,
 } from '../../../core/utils/mediaUrl';
+import { getRuntimeHostBase } from '../../../core/api/runtimeBaseUrl';
 import { useAuth } from '../../../core/auth/AuthContext';
 import { canMutate } from '../../../core/utils/roleGate';
 import { CollectionRepository, collectionQueryKeys } from '../../../core/repositories';
@@ -102,6 +103,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const isLoopingRef = useRef(false);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
   const [video, setVideo] = useState<VideoType | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -436,6 +438,24 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     [videoId, canWrite]
   );
 
+  const textTracks = useMemo((): TextTracks => {
+    const hostBase = getRuntimeHostBase();
+    return (video?.subtitles?.map(sub => ({
+      title: sub.language,
+      language: sub.language,
+      type: sub.filename.endsWith('.vtt') ? TextTrackType.VTT : TextTrackType.SUBRIP,
+      uri: `${hostBase}${sub.path.startsWith('/') ? '' : '/'}${sub.path}`,
+    })) ?? []) as TextTracks;
+  }, [video]);
+
+  const selectedTextTrack = useMemo(
+    () =>
+      subtitlesEnabled && textTracks.length > 0
+        ? { type: SelectedTrackType.INDEX, value: 0 }
+        : { type: SelectedTrackType.DISABLED },
+    [subtitlesEnabled, textTracks.length]
+  );
+
   if (loading && !video) {
     return (
       <View style={styles.centered}>
@@ -465,13 +485,14 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
           <View style={styles.videoContainer}>
             <Video
               ref={videoRef}
-              source={{ uri: playbackUrl }}
+              source={{ uri: playbackUrl, textTracks: textTracks.length > 0 ? textTracks : undefined }}
               style={styles.video}
               paused={isPaused}
               rate={playbackRate}
+              repeat={isLooping}
+              selectedTextTrack={selectedTextTrack}
               onProgress={handleVideoProgressEvent}
               onEnd={handleVideoEnd}
-              repeat={isLooping}
               onFullscreenPlayerDidPresent={() => setIsFullscreen(true)}
               onFullscreenPlayerDidDismiss={() => setIsFullscreen(false)}
             />
@@ -488,6 +509,11 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
                 <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
               </Pressable>
               <View style={styles.controlsRowSpacer} />
+              {textTracks.length > 0 && (
+                <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={() => setSubtitlesEnabled(e => !e)}>
+                  <MaterialIcons name="subtitles" size={28} color={subtitlesEnabled ? '#0a7ea4' : '#fff'} />
+                </Pressable>
+              )}
               <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={() => setIsLooping(l => !l)}>
                 <MaterialIcons name="repeat" size={28} color={isLooping ? '#0a7ea4' : '#fff'} />
               </Pressable>
