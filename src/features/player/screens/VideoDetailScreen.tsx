@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import type { AppStateStatus, LayoutChangeEvent } from 'react-native';
 import Video, { TextTrackType, SelectedTrackType } from 'react-native-video';
-import type { VideoRef, TextTracks } from 'react-native-video';
+import type { VideoRef, TextTracks, OnLoadData } from 'react-native-video';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -63,26 +63,24 @@ interface VideoDetailScreenProps {
   onVideoPress?: (videoId: string) => void;
 }
 
+function formatSeconds(secs: number): string {
+  if (!Number.isFinite(secs) || secs < 0) return '0:00';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 /** Format duration string: if it's a plain number of seconds, convert to mm:ss or h:mm:ss. */
 function formatDuration(duration: string): string {
   const secs = Number(duration);
   if (!Number.isFinite(secs) || duration.includes(':')) return duration;
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.floor(secs % 60);
-  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
-  const ss = String(s).padStart(2, '0');
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  return formatSeconds(secs);
 }
 
-function formatTime(secs: number): string {
-  const s = Math.max(0, Math.floor(secs));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
-  const ss = String(sec).padStart(2, '0');
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
 }
 
 function resolveFromHeight(h: number): string {
@@ -96,19 +94,130 @@ function resolveFromHeight(h: number): string {
   return `${h}P`;
 }
 
-function sourceLabel(source?: string): string {
+function sourceLabel(source: string | undefined): string {
   if (!source) return 'Unknown';
-  switch (source.toLowerCase()) {
-    case 'youtube': return 'YouTube';
-    case 'bilibili': return 'Bilibili';
-    case 'twitch': return 'Twitch';
-    case 'missav': return 'MissAV';
-    case 'local': return 'Local';
-    default: return source.charAt(0).toUpperCase() + source.slice(1);
+  return source.charAt(0).toUpperCase() + source.slice(1);
+}
+
+function sourceBadgeColor(source: string | undefined): string {
+  switch (source) {
+    case 'youtube': return '#cc0000';
+    case 'bilibili': return '#00a1d6';
+    case 'local': return '#555';
+    default: return '#555';
   }
 }
 
-const THUMB_SIZE = 14;
+/** Draggable progress slider with time display. */
+function ProgressSlider({
+  currentTime,
+  duration,
+  onSeekTo,
+}: {
+  currentTime: number;
+  duration: number;
+  onSeekTo: (seconds: number) => void;
+}) {
+  const [seekRatio, setSeekRatio] = useState<number | null>(null);
+  const widthRef = useRef(0);
+  const latestRef = useRef({ duration, onSeekTo });
+  latestRef.current = { duration, onSeekTo };
+
+  const ratio = duration > 0 ? clamp01(currentTime / duration) : 0;
+  const displayRatio = seekRatio !== null ? seekRatio : ratio;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        if (widthRef.current > 0 && latestRef.current.duration > 0) {
+          setSeekRatio(clamp01(e.nativeEvent.locationX / widthRef.current));
+        }
+      },
+      onPanResponderMove: (e) => {
+        if (widthRef.current > 0) {
+          setSeekRatio(clamp01(e.nativeEvent.locationX / widthRef.current));
+        }
+      },
+      onPanResponderRelease: (e) => {
+        const w = widthRef.current;
+        const { duration: d, onSeekTo: seek } = latestRef.current;
+        if (w > 0 && d > 0) {
+          seek(clamp01(e.nativeEvent.locationX / w) * d);
+        }
+        setSeekRatio(null);
+      },
+      onPanResponderTerminate: () => setSeekRatio(null),
+    })
+  ).current;
+
+  const pct = `${(displayRatio * 100).toFixed(2)}%` as unknown as number;
+
+  return (
+    <View style={sliderStyles.row}>
+      <Text style={sliderStyles.time}>{formatSeconds(currentTime)}</Text>
+      <View
+        style={sliderStyles.track}
+        onLayout={(e: LayoutChangeEvent) => {
+          widthRef.current = e.nativeEvent.layout.width;
+        }}
+        {...panResponder.panHandlers}
+      >
+        <View style={sliderStyles.rail} />
+        <View style={[sliderStyles.fill, { width: pct }]} />
+        <View style={[sliderStyles.thumb, { left: pct, marginLeft: -7 }]} />
+      </View>
+      <Text style={sliderStyles.time}>{formatSeconds(duration)}</Text>
+    </View>
+  );
+}
+
+const sliderStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  time: {
+    color: '#ccc',
+    fontSize: 11,
+    minWidth: 38,
+    textAlign: 'center',
+  },
+  track: {
+    flex: 1,
+    height: 20,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  rail: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: '#444',
+    borderRadius: 2,
+  },
+  fill: {
+    position: 'absolute',
+    left: 0,
+    height: 4,
+    backgroundColor: '#0a7ea4',
+    borderRadius: 2,
+  },
+  thumb: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+    top: 3,
+  },
+});
 
 const PROGRESS_WRITE_INTERVAL_MS = 10000;
 const VIEW_RESUME_GAP_MS = 5000;
@@ -151,12 +260,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const isLoopingRef = useRef(false);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [isSeeking, setIsSeeking] = useState(false);
-  const [seekRatio, setSeekRatio] = useState(0);
-  const [trackWidth, setTrackWidth] = useState(1);
   const durationRef = useRef(0);
-  const progressBarLayout = useRef<{ x: number; width: number }>({ x: 0, width: 1 });
-  const progressTrackRef = useRef<View>(null);
 
   // Data state
   const [video, setVideo] = useState<VideoType | null>(null);
@@ -169,13 +273,13 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const [progress, setProgress] = useState(0);
   const [rating, setRating] = useState<number | null>(null);
   const [authorChannelUrl, setAuthorChannelUrl] = useState<string | null>(null);
+  const [videoResolution, setVideoResolution] = useState<string | null>(null);
 
-  // New feature state
+  // Description + tags state
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionClamped, setDescriptionClamped] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [tagInput, setTagInput] = useState('');
-  const [videoResolution, setVideoResolution] = useState<string | null>(null);
   const [localTags, setLocalTags] = useState<string[]>([]);
 
   // Refs
@@ -191,6 +295,11 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   const pendingRatingRef = useRef<number | null>(null);
   const videoRef = useRef<VideoRef>(null);
   const currentTimeRef = useRef(0);
+
+  // Refs to avoid stale closures in callbacks
+  const upNextVideosRef = useRef<VideoType[]>([]);
+  const autoPlayNextRef = useRef(autoPlayNext);
+  const onVideoPressRef = useRef(onVideoPress);
 
   const { data: collections = [] } = useQuery({
     queryKey: collectionQueryKeys.all,
@@ -219,6 +328,11 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     [allVideos, videoId]
   );
 
+  // Keep refs in sync
+  useEffect(() => { upNextVideosRef.current = upNextVideos; }, [upNextVideos]);
+  useEffect(() => { autoPlayNextRef.current = autoPlayNext; }, [autoPlayNext]);
+  useEffect(() => { onVideoPressRef.current = onVideoPress; }, [onVideoPress]);
+
   const addToCollectionMutation = useMutation({
     mutationFn: (collectionId: string) =>
       CollectionRepository.updateCollection(collectionId, { videoId, action: 'add' }),
@@ -239,7 +353,6 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     };
   }, []);
 
-  // Sync localTags with video.tags when video loads/changes
   useEffect(() => {
     setLocalTags(video?.tags ?? []);
   }, [video?.tags]);
@@ -434,16 +547,25 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     currentTimeRef.current = next;
   }, []);
 
+  const handleSeekTo = useCallback((seconds: number) => {
+    videoRef.current?.seek(seconds);
+    currentTimeRef.current = seconds;
+    handleProgress(seconds);
+  }, [handleProgress]);
+
   const handleVideoEnd = useCallback(() => {
     if (isLoopingRef.current) return;
     setIsPaused(true);
     handleProgress(0);
     pendingProgressRef.current = 0;
     runAsync(flushProgressWrite(true));
-    if (autoPlayNext && upNextVideos.length > 0 && onVideoPress) {
-      setTimeout(() => onVideoPress(upNextVideos[0].id), 400);
+    if (autoPlayNextRef.current) {
+      const next = upNextVideosRef.current[0];
+      if (next) {
+        onVideoPressRef.current?.(next.id);
+      }
     }
-  }, [handleProgress, flushProgressWrite, autoPlayNext, upNextVideos, onVideoPress]);
+  }, [handleProgress, flushProgressWrite]);
 
   useEffect(() => {
     setIsPaused(!autoPlay);
@@ -465,66 +587,19 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     }
   }, [isFullscreen]);
 
-  const handleLoad = useCallback(
-    ({ duration: dur, naturalSize }: { duration: number; naturalSize?: { width: number; height: number } }) => {
-      setDuration(dur);
-      durationRef.current = dur;
-      if (naturalSize && naturalSize.height > 0) {
-        setVideoResolution(resolveFromHeight(naturalSize.height));
-      }
-      const savedProgress = latestProgressRef.current;
-      if (savedProgress > 0) {
-        videoRef.current?.seek(savedProgress);
-      }
-    },
-    []
-  );
-
-  const handleProgressTrackLayout = useCallback((_e: LayoutChangeEvent) => {
-    progressTrackRef.current?.measureInWindow((x, _y, w) => {
-      const safeWidth = w > 0 ? w : 1;
-      progressBarLayout.current = { x, width: safeWidth };
-      setTrackWidth(safeWidth);
-    });
+  const handleLoad = useCallback((data: OnLoadData) => {
+    const dur = data.duration;
+    setDuration(dur);
+    durationRef.current = dur;
+    const { height: h } = data.naturalSize;
+    if (h > 0) {
+      setVideoResolution(resolveFromHeight(h));
+    }
+    const savedProgress = latestProgressRef.current;
+    if (savedProgress > 0) {
+      videoRef.current?.seek(savedProgress);
+    }
   }, []);
-
-  const progressPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: evt => {
-        const ratio = Math.max(
-          0,
-          Math.min(1, (evt.nativeEvent.pageX - progressBarLayout.current.x) / progressBarLayout.current.width)
-        );
-        setIsSeeking(true);
-        setSeekRatio(ratio);
-      },
-      onPanResponderMove: evt => {
-        const ratio = Math.max(
-          0,
-          Math.min(1, (evt.nativeEvent.pageX - progressBarLayout.current.x) / progressBarLayout.current.width)
-        );
-        setSeekRatio(ratio);
-      },
-      onPanResponderRelease: evt => {
-        const ratio = Math.max(
-          0,
-          Math.min(1, (evt.nativeEvent.pageX - progressBarLayout.current.x) / progressBarLayout.current.width)
-        );
-        setIsSeeking(false);
-        setSeekRatio(ratio);
-        if (durationRef.current > 0) {
-          const seekTime = ratio * durationRef.current;
-          videoRef.current?.seek(seekTime);
-          currentTimeRef.current = seekTime;
-        }
-      },
-      onPanResponderTerminate: () => {
-        setIsSeeking(false);
-      },
-    })
-  ).current;
 
   const handleBackPress = useCallback(() => {
     runAsync(flushProgressWrite(true));
@@ -689,7 +764,6 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     [subtitlesEnabled, textTracks.length]
   );
 
-  // All available tags for autocomplete (union of settings tags + current video tags)
   const allTagOptions = useMemo(
     () => Array.from(new Set([...availableTags, ...localTags])).sort(),
     [availableTags, localTags]
@@ -717,12 +791,12 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
 
   if (!video) return null;
 
-  const displayRatio = isSeeking ? seekRatio : duration > 0 ? progress / duration : 0;
-  const displayTime = isSeeking ? seekRatio * duration : progress;
-  const thumbLeft = Math.max(0, displayRatio * trackWidth - THUMB_SIZE / 2);
+  const hasDescription =
+    typeof video.description === 'string' && video.description.trim().length > 0;
 
   const playerAndMeta = (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      {/* ── 1. Video player ── */}
       {playbackUrl ? (
         <>
           <View style={styles.videoContainer}>
@@ -747,59 +821,53 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               </View>
             )}
           </View>
+
+          {/* ── 2. Progress bar ── */}
           <View style={styles.controlsBar}>
-            <View style={styles.progressRow}>
-              <Text style={styles.timeText}>{formatTime(displayTime)}</Text>
-              <View
-                ref={progressTrackRef}
-                style={styles.progressWrapper}
-                onLayout={handleProgressTrackLayout}
-                {...progressPanResponder.panHandlers}
-              >
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, displayRatio * 100))}%` }]} />
-                </View>
-                <View style={[styles.progressThumb, { left: thumbLeft }]} />
-              </View>
-              <Text style={[styles.timeText, styles.timeTextRight]}>{duration > 0 ? formatTime(duration) : '--:--'}</Text>
-            </View>
+            <ProgressSlider
+              currentTime={progress}
+              duration={duration}
+              onSeekTo={handleSeekTo}
+            />
+
+            {/* ── 3. Controls row ── */}
             <View style={styles.controlsRow}>
-              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={handleTogglePlay}>
+              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={handleTogglePlay}>
                 <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
               </Pressable>
               <View style={styles.controlsRowSpacer} />
               {textTracks.length > 0 && (
-                <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={() => setSubtitlesEnabled(e => !e)}>
+                <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={() => setSubtitlesEnabled(e => !e)}>
                   <MaterialIcons name="subtitles" size={28} color={subtitlesEnabled ? '#0a7ea4' : '#fff'} />
                 </Pressable>
               )}
-              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={() => setIsLooping(l => !l)}>
+              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={() => setIsLooping(l => !l)}>
                 <MaterialIcons name="repeat" size={28} color={isLooping ? '#0a7ea4' : '#fff'} />
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.seekBtnPressed]} onPress={handleToggleFullscreen}>
+              <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={handleToggleFullscreen}>
                 <MaterialIcons name={isFullscreen ? 'fullscreen-exit' : 'fullscreen'} size={28} color="#fff" />
               </Pressable>
             </View>
             <View style={styles.seekBar}>
-              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-600)}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.controlBtnPressed]} onPress={() => handleSeek(-600)}>
                 <MaterialIcons name="keyboard-double-arrow-left" size={28} color="#fff" />
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-60)}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.controlBtnPressed]} onPress={() => handleSeek(-60)}>
                 <MaterialIcons name="fast-rewind" size={28} color="#fff" />
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(-10)}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.controlBtnPressed]} onPress={() => handleSeek(-10)}>
                 <MaterialIcons name="replay-10" size={28} color="#fff" />
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(10)}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.controlBtnPressed]} onPress={() => handleSeek(10)}>
                 <MaterialIcons name="forward-10" size={28} color="#fff" />
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(60)}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.controlBtnPressed]} onPress={() => handleSeek(60)}>
                 <MaterialIcons name="fast-forward" size={28} color="#fff" />
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => handleSeek(600)}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.controlBtnPressed]} onPress={() => handleSeek(600)}>
                 <MaterialIcons name="keyboard-double-arrow-right" size={28} color="#fff" />
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.seekBtnPressed]} onPress={() => setSpeedModalVisible(true)}>
+              <Pressable style={({ pressed }) => [styles.seekBtn, pressed && styles.controlBtnPressed]} onPress={() => setSpeedModalVisible(true)}>
                 <Text style={styles.speedBtnText}>{playbackRate === 1 ? '1×' : `${playbackRate}×`}</Text>
               </Pressable>
             </View>
@@ -811,185 +879,220 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         </View>
       )}
 
-      <View style={styles.meta}>
-        {/* Title */}
+      {/* ── Divider ── */}
+      <View style={styles.divider} />
+
+      {/* ── 4. Video info ── */}
+      <View style={styles.section}>
         <Text style={styles.title}>{video.title}</Text>
 
-        {/* Source badge + resolution */}
-        <View style={styles.badgeRow}>
-          {video.source && (
-            <View style={styles.sourceBadge}>
+        <View style={styles.authorRow}>
+          {video.author != null &&
+            (onAuthorPress != null ? (
+              <TouchableOpacity onPress={() => onAuthorPress(video.author!)}>
+                <Text style={styles.author}>{video.author}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.author}>{video.author}</Text>
+            ))}
+          {authorChannelUrl != null && (
+            <TouchableOpacity onPress={() => runAsync(handleOpenAuthorChannel())}>
+              <Text style={styles.channelLink}>Open channel</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.statsRow}>
+          {video.viewCount != null && (
+            <Text style={styles.statItem}>{video.viewCount.toLocaleString()} views</Text>
+          )}
+          {video.source != null && (
+            <View style={[styles.sourceBadge, { backgroundColor: sourceBadgeColor(video.source) }]}>
               <Text style={styles.sourceBadgeText}>{sourceLabel(video.source)}</Text>
             </View>
           )}
-          {videoResolution && (
+          {videoResolution != null && (
             <View style={styles.resolutionBadge}>
               <Text style={styles.resolutionBadgeText}>{videoResolution}</Text>
             </View>
           )}
+          {progress > 0 && (
+            <View style={styles.resumeBadge}>
+              <MaterialIcons name="history" size={12} color="#aaa" />
+              <Text style={styles.resumeText}>Resume {formatSeconds(progress)}</Text>
+            </View>
+          )}
         </View>
 
-        {/* Author */}
-        {video.author != null &&
-          (onAuthorPress != null ? (
-            <TouchableOpacity onPress={() => onAuthorPress(video.author!)}>
-              <Text style={styles.author}>{video.author}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={styles.author}>{video.author}</Text>
-          ))}
-
-        {/* Author channel link */}
-        {authorChannelUrl != null && (
-          <TouchableOpacity onPress={() => runAsync(handleOpenAuthorChannel())}>
-            <Text style={styles.channelLink}>Open author channel</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Collapsible description */}
-        {video.description != null && (
-          <View style={styles.descriptionContainer}>
-            {/* Hidden full text to detect overflow */}
-            <Text
-              style={[styles.description, styles.descriptionHidden]}
-              onTextLayout={e => {
-                if (!descriptionExpanded) {
-                  setDescriptionClamped(e.nativeEvent.lines.length > 3);
-                }
-              }}
-            >
-              {video.description}
-            </Text>
-            <Text
-              style={styles.description}
-              numberOfLines={descriptionExpanded ? undefined : 3}
-            >
-              {video.description}
-            </Text>
-            {descriptionClamped && (
-              <TouchableOpacity
-                onPress={() => setDescriptionExpanded(e => !e)}
-                style={styles.descriptionToggle}
-              >
-                <MaterialIcons
-                  name={descriptionExpanded ? 'expand-less' : 'expand-more'}
-                  size={18}
-                  color="#0a7ea4"
-                />
-                <Text style={styles.descriptionToggleText}>
-                  {descriptionExpanded ? 'Collapse' : 'Show more'}
+        {canWrite && (
+          <View style={styles.ratingRow}>
+            <Text style={styles.ratingLabel}>Rate: </Text>
+            {[1, 2, 3, 4, 5].map(n => (
+              <TouchableOpacity key={n} onPress={() => handleRate(n)} style={styles.starButton}>
+                <Text style={[styles.starText, rating != null && n <= rating && styles.starTextActive]}>
+                  {rating != null && n <= rating ? '★' : '☆'}
                 </Text>
               </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {/* Source links row */}
-        <View style={styles.linksRow}>
-          {video.sourceUrl && (
-            <TouchableOpacity style={styles.linkBtn} onPress={() => runAsync(handleOpenSourceUrl())}>
-              <MaterialIcons name="link" size={15} color="#0a7ea4" />
-              <Text style={styles.linkBtnText}>Source</Text>
-            </TouchableOpacity>
-          )}
-          {(playbackUrl || video.sourceUrl) && (
-            <TouchableOpacity style={styles.linkBtn} onPress={() => runAsync(handleOpenDownload())}>
-              <MaterialIcons name="download" size={15} color="#0a7ea4" />
-              <Text style={styles.linkBtnText}>Download</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Action buttons row */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleCopyUrl())}>
-            <MaterialIcons name="content-copy" size={20} color="#aaa" />
-            <Text style={styles.actionBtnText}>Copy URL</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleShare())}>
-            <MaterialIcons name="share" size={20} color="#aaa" />
-            <Text style={styles.actionBtnText}>Share</Text>
-          </TouchableOpacity>
-          {canWrite && (
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.actionBtnDanger]}
-              onPress={() => setDeleteModalVisible(true)}
-            >
-              <MaterialIcons name="delete" size={20} color="#f66" />
-              <Text style={[styles.actionBtnText, styles.actionBtnTextDanger]}>Delete</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Metadata */}
-        {video.viewCount != null && (
-          <Text style={styles.metaText}>{video.viewCount} views</Text>
-        )}
-        {progress > 0 && (
-          <Text style={styles.metaText}>Resume from {Math.floor(progress)}s</Text>
-        )}
-
-        {/* Tags */}
-        {canWrite && (
-          <TouchableOpacity
-            style={styles.tagsRow}
-            onPress={() => setTagsModalVisible(true)}
-          >
-            <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
-            {localTags.length === 0 ? (
-              <Text style={styles.tagsPlaceholder}>Add tags…</Text>
-            ) : (
-              <View style={styles.tagsChips}>
-                {localTags.map(tag => (
-                  <View key={tag} style={styles.tagChip}>
-                    <Text style={styles.tagChipText}>{tag}</Text>
-                    <TouchableOpacity onPress={() => handleRemoveTag(tag)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-                      <MaterialIcons name="close" size={12} color="#aaa" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                <MaterialIcons name="add" size={16} color="#888" />
-              </View>
-            )}
-          </TouchableOpacity>
-        )}
-        {!canWrite && localTags.length > 0 && (
-          <View style={styles.tagsRow}>
-            <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
-            <View style={styles.tagsChips}>
-              {localTags.map(tag => (
-                <View key={tag} style={styles.tagChip}>
-                  <Text style={styles.tagChipText}>{tag}</Text>
-                </View>
-              ))}
-            </View>
+            ))}
           </View>
         )}
       </View>
 
-      {canWrite && (
-        <View style={styles.ratingRow}>
-          <Text style={styles.ratingLabel}>Rate: </Text>
-          {[1, 2, 3, 4, 5].map(n => (
-            <TouchableOpacity key={n} onPress={() => handleRate(n)} style={styles.starButton}>
-              <Text style={[styles.starText, rating != null && n <= rating && styles.starTextActive]}>
-                {rating != null && n <= rating ? '★' : '☆'}
+      {/* ── Divider ── */}
+      <View style={styles.divider} />
+
+      {/* ── 5. Action buttons row ── */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleCopyUrl())}>
+          <MaterialIcons name="content-copy" size={20} color="#aaa" />
+          <Text style={styles.actionBtnText}>Copy URL</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleShare())}>
+          <MaterialIcons name="share" size={20} color="#aaa" />
+          <Text style={styles.actionBtnText}>Share</Text>
+        </TouchableOpacity>
+        {canWrite && (
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => setAddToCollectionModalVisible(true)}
+          >
+            <MaterialIcons name="add" size={20} color="#aaa" />
+            <Text style={styles.actionBtnText}>Collection</Text>
+          </TouchableOpacity>
+        )}
+        {canWrite && (
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnDanger]}
+            onPress={() => setDeleteModalVisible(true)}
+          >
+            <MaterialIcons name="delete" size={20} color="#f66" />
+            <Text style={[styles.actionBtnText, styles.actionBtnTextDanger]}>Delete</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* ── Divider ── */}
+      <View style={styles.divider} />
+
+      {/* ── 6. Description ── */}
+      {hasDescription && (
+        <View style={styles.section}>
+          <Text
+            style={[styles.description, styles.descriptionHidden]}
+            onTextLayout={e => {
+              if (!descriptionExpanded) {
+                setDescriptionClamped(e.nativeEvent.lines.length > 3);
+              }
+            }}
+          >
+            {video.description}
+          </Text>
+          <Text
+            style={styles.description}
+            numberOfLines={descriptionExpanded ? undefined : 3}
+          >
+            {video.description}
+          </Text>
+          {descriptionClamped && (
+            <TouchableOpacity
+              onPress={() => setDescriptionExpanded(e => !e)}
+              style={styles.descriptionToggle}
+            >
+              <MaterialIcons
+                name={descriptionExpanded ? 'expand-less' : 'expand-more'}
+                size={18}
+                color="#0a7ea4"
+              />
+              <Text style={styles.descriptionToggleText}>
+                {descriptionExpanded ? 'Collapse' : 'Show more'}
               </Text>
             </TouchableOpacity>
-          ))}
+          )}
         </View>
       )}
 
+      {/* ── 7. Tags ── */}
       {canWrite && (
         <TouchableOpacity
-          style={styles.addToCollectionButton}
-          onPress={() => setAddToCollectionModalVisible(true)}
+          style={styles.tagsSection}
+          onPress={() => setTagsModalVisible(true)}
         >
-          <Text style={styles.addToCollectionButtonText}>Add to collection</Text>
+          <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
+          {localTags.length === 0 ? (
+            <Text style={styles.tagsPlaceholder}>Add tags…</Text>
+          ) : (
+            <View style={styles.tagsChips}>
+              {localTags.map(tag => (
+                <View key={tag} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{tag}</Text>
+                  <TouchableOpacity onPress={() => handleRemoveTag(tag)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                    <MaterialIcons name="close" size={12} color="#aaa" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <MaterialIcons name="add" size={16} color="#888" />
+            </View>
+          )}
         </TouchableOpacity>
       )}
+      {!canWrite && localTags.length > 0 && (
+        <View style={styles.tagsSection}>
+          <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
+          <View style={styles.tagsChips}>
+            {localTags.map(tag => (
+              <View key={tag} style={styles.tagChip}>
+                <Text style={styles.tagChipText}>{tag}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
-      <View style={styles.comments}>
+      {/* ── Divider ── */}
+      <View style={styles.divider} />
+
+      {/* ── 8. Metadata ── */}
+      <View style={styles.metadataSection}>
+        {video.sourceUrl != null && (
+          <TouchableOpacity style={styles.metaRow} onPress={() => runAsync(handleOpenSourceUrl())}>
+            <MaterialIcons name="link" size={15} color="#0a7ea4" />
+            <Text style={styles.metaRowText} numberOfLines={1}>{video.sourceUrl}</Text>
+            <MaterialIcons name="open-in-new" size={13} color="#666" />
+          </TouchableOpacity>
+        )}
+        {(playbackUrl || video.sourceUrl) && (
+          <TouchableOpacity style={styles.metaRow} onPress={() => runAsync(handleOpenDownload())}>
+            <MaterialIcons name="download" size={15} color="#0a7ea4" />
+            <Text style={styles.metaRowLabel}>Download</Text>
+          </TouchableOpacity>
+        )}
+        {video.source != null && (
+          <View style={styles.metaRow}>
+            <MaterialIcons name="video-library" size={15} color="#666" />
+            <Text style={styles.metaRowText}>{sourceLabel(video.source)}</Text>
+          </View>
+        )}
+        {(video as any).addedAt != null && (
+          <View style={styles.metaRow}>
+            <MaterialIcons name="calendar-today" size={15} color="#666" />
+            <Text style={styles.metaRowText}>
+              {new Date((video as any).addedAt).toISOString().split('T')[0]}
+            </Text>
+          </View>
+        )}
+        {videoResolution != null && (
+          <View style={styles.metaRow}>
+            <MaterialIcons name="high-quality" size={15} color="#666" />
+            <Text style={styles.metaRowText}>{videoResolution}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── Divider ── */}
+      <View style={styles.divider} />
+
+      {/* ── 9. Comments ── */}
+      <View style={styles.commentsSection}>
         <Text style={styles.commentsTitle}>Comments</Text>
         {!commentsLoaded ? (
           <TouchableOpacity
@@ -1013,6 +1116,10 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         )}
       </View>
 
+      {/* ── Divider ── */}
+      {!isTabletLandscape && <View style={styles.divider} />}
+
+      {/* ── 10. Up next (inline) ── */}
       {!isTabletLandscape && (
         <View style={styles.upNextInline}>
           <View style={styles.upNextHeader}>
@@ -1146,18 +1253,18 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         onRequestClose={() => setAddToCollectionModalVisible(false)}
       >
         <Pressable
-          style={styles.addToCollectionOverlay}
+          style={styles.modalOverlay}
           onPress={() => setAddToCollectionModalVisible(false)}
         >
-          <Pressable style={styles.addToCollectionModal} onPress={e => e.stopPropagation()}>
-            <View style={styles.addToCollectionModalHeader}>
-              <Text style={styles.addToCollectionModalTitle}>Add to collection</Text>
+          <Pressable style={styles.modalBox} onPress={e => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add to collection</Text>
               <TouchableOpacity onPress={() => setAddToCollectionModalVisible(false)}>
-                <Text style={styles.addToCollectionModalClose}>Close</Text>
+                <MaterialIcons name="close" size={22} color="#aaa" />
               </TouchableOpacity>
             </View>
             {addToCollectionMutation.isError && (
-              <Text style={styles.addToCollectionError}>
+              <Text style={styles.modalError}>
                 {(addToCollectionMutation.error as { message?: string }).message}
               </Text>
             )}
@@ -1166,20 +1273,20 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               keyExtractor={(c: Collection) => c.id}
               renderItem={({ item }: { item: Collection }) => (
                 <TouchableOpacity
-                  style={styles.addToCollectionRow}
+                  style={styles.modalRow}
                   onPress={() => addToCollectionMutation.mutate(item.id)}
                   disabled={addToCollectionMutation.isPending}
                 >
-                  <Text style={styles.addToCollectionRowText}>
+                  <Text style={styles.modalRowText}>
                     {item.name ?? item.title ?? item.id}
                   </Text>
-                  <Text style={styles.addToCollectionRowMeta}>
+                  <Text style={styles.modalRowMeta}>
                     {item.videos?.length ?? 0} videos
                   </Text>
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
-                <Text style={styles.addToCollectionEmpty}>No collections yet.</Text>
+                <Text style={styles.modalEmpty}>No collections yet.</Text>
               }
             />
           </Pressable>
@@ -1264,7 +1371,6 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               </TouchableOpacity>
             </View>
 
-            {/* Current tags */}
             <View style={styles.tagsModalCurrentSection}>
               <Text style={styles.tagsModalSectionLabel}>Current tags</Text>
               {localTags.length === 0 ? (
@@ -1285,7 +1391,6 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               )}
             </View>
 
-            {/* Add new tag input */}
             <View style={styles.tagsInputRow}>
               <TextInput
                 style={styles.tagsInput}
@@ -1307,7 +1412,6 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               </TouchableOpacity>
             </View>
 
-            {/* Suggested tags from settings */}
             {allTagOptions.filter(t => !localTags.includes(t)).length > 0 && (
               <View style={styles.tagsModalSuggestSection}>
                 <Text style={styles.tagsModalSectionLabel}>Suggestions</Text>
@@ -1394,12 +1498,13 @@ const styles = StyleSheet.create({
   },
   controlsBar: {
     backgroundColor: '#111',
+    paddingBottom: 8,
   },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingTop: 4,
+    paddingVertical: 2,
   },
   controlBtn: {
     width: 44,
@@ -1408,143 +1513,88 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 22,
   },
+  controlBtnPressed: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
   controlsRowSpacer: {
     flex: 1,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 2,
-    gap: 8,
-  },
-  timeText: {
-    color: '#aaa',
-    fontSize: 12,
-    minWidth: 36,
-    textAlign: 'left',
-  },
-  timeTextRight: {
-    textAlign: 'right',
-  },
-  progressWrapper: {
-    flex: 1,
-    height: 20,
-    justifyContent: 'center',
-  },
-  progressTrack: {
-    height: 4,
-    backgroundColor: '#444',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#0a7ea4',
-    borderRadius: 2,
-  },
-  progressThumb: {
-    position: 'absolute',
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: THUMB_SIZE / 2,
-    backgroundColor: '#0a7ea4',
-    top: '50%',
-    marginTop: -(THUMB_SIZE / 2),
   },
   seekBar: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
-    gap: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    gap: 8,
   },
   seekBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  seekBtnPressed: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   speedBtnText: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
   },
-  speedOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#333',
+    marginVertical: 0,
   },
-  speedModal: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    paddingVertical: 8,
-    minWidth: 220,
-  },
-  speedModalTitle: {
-    color: '#aaa',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#444',
-  },
-  speedOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  section: {
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  speedOptionActive: {
-    backgroundColor: 'rgba(10,126,164,0.1)',
-  },
-  speedOptionText: {
-    color: '#fff',
-    fontSize: 15,
-  },
-  speedOptionTextActive: {
-    color: '#0a7ea4',
-    fontWeight: '600',
-  },
-  meta: {
-    padding: 16,
-  },
   title: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
+    lineHeight: 24,
     marginBottom: 8,
   },
-  badgeRow: {
+  authorRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 12,
     marginBottom: 8,
+  },
+  author: {
+    color: '#aaa',
+    fontSize: 14,
+  },
+  channelLink: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  statItem: {
+    color: '#888',
+    fontSize: 13,
   },
   sourceBadge: {
-    backgroundColor: '#2a3a4a',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 4,
   },
   sourceBadgeText: {
-    color: '#5bc4e8',
+    color: '#fff',
     fontSize: 11,
     fontWeight: '600',
   },
   resolutionBadge: {
     backgroundColor: '#1e3a1e',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 4,
   },
   resolutionBadgeText: {
@@ -1552,60 +1602,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-  author: {
+  resumeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  resumeText: {
+    color: '#888',
+    fontSize: 12,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  ratingLabel: {
     color: '#aaa',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  channelLink: {
-    color: '#0a7ea4',
+    marginRight: 4,
     fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
   },
-  descriptionContainer: {
-    marginBottom: 10,
+  starButton: {
+    paddingHorizontal: 3,
+    paddingVertical: 2,
   },
-  descriptionHidden: {
-    position: 'absolute',
-    opacity: 0,
-    zIndex: -1,
+  starText: {
+    fontSize: 24,
+    color: '#555',
   },
-  description: {
-    color: '#ccc',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  descriptionToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  descriptionToggleText: {
-    color: '#0a7ea4',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  linksRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 10,
-  },
-  linkBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-  },
-  linkBtnText: {
-    color: '#0a7ea4',
-    fontSize: 13,
-    fontWeight: '600',
+  starTextActive: {
+    color: '#f5c518',
   },
   actionRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 8,
-    marginBottom: 12,
     flexWrap: 'wrap',
   },
   actionBtn: {
@@ -1630,17 +1662,32 @@ const styles = StyleSheet.create({
   actionBtnTextDanger: {
     color: '#f66',
   },
-  metaText: {
-    color: '#888',
-    fontSize: 12,
-    marginBottom: 4,
+  descriptionHidden: {
+    position: 'absolute',
+    opacity: 0,
+    zIndex: -1,
   },
-  tagsRow: {
+  description: {
+    color: '#ccc',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  descriptionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  descriptionToggleText: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tagsSection: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    marginTop: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   tagsPlaceholder: {
     color: '#666',
@@ -1675,102 +1722,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  ratingRow: {
+  metadataSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    gap: 6,
   },
-  ratingLabel: {
+  metaRowText: {
     color: '#aaa',
-    marginRight: 8,
-  },
-  starButton: {
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  starText: {
-    fontSize: 28,
-    color: '#555',
-  },
-  starTextActive: {
-    color: '#f5c518',
-  },
-  addToCollectionButton: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#0a7ea4',
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  addToCollectionButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  addToCollectionOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  addToCollectionModal: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 16,
-    maxHeight: '80%',
-  },
-  addToCollectionModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  addToCollectionModalTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  addToCollectionModalClose: {
-    color: '#0a7ea4',
-    fontSize: 14,
-  },
-  addToCollectionError: {
-    color: '#f66',
     fontSize: 13,
-    marginBottom: 8,
+    flex: 1,
   },
-  addToCollectionRow: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
+  metaRowLabel: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
   },
-  addToCollectionRowText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  addToCollectionRowMeta: {
-    color: '#888',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  addToCollectionEmpty: {
-    color: '#666',
-    textAlign: 'center',
-    padding: 24,
-  },
-  comments: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#333',
+  commentsSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   commentsTitle: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     marginBottom: 12,
   },
   loadCommentsButton: {
@@ -1787,24 +1766,24 @@ const styles = StyleSheet.create({
   },
   noComments: {
     color: '#666',
+    fontSize: 14,
   },
   comment: {
     marginBottom: 12,
   },
   commentAuthor: {
     color: '#aaa',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   commentContent: {
     color: '#ccc',
     fontSize: 14,
+    lineHeight: 20,
   },
   upNextInline: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#333',
-    marginTop: 8,
+    paddingTop: 4,
   },
   tabletRow: {
     flex: 1,
@@ -1903,7 +1882,47 @@ const styles = StyleSheet.create({
     padding: 16,
     textAlign: 'center',
   },
-  // Delete modal
+  speedOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  speedModal: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 220,
+  },
+  speedModalTitle: {
+    color: '#aaa',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#444',
+  },
+  speedOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  speedOptionActive: {
+    backgroundColor: 'rgba(10,126,164,0.1)',
+  },
+  speedOptionText: {
+    color: '#fff',
+    fontSize: 15,
+  },
+  speedOptionTextActive: {
+    color: '#0a7ea4',
+    fontWeight: '600',
+  },
   deleteOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -1960,7 +1979,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  // Tags modal
   tagsOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -2031,5 +2049,54 @@ const styles = StyleSheet.create({
   tagSuggestionText: {
     color: '#ccc',
     fontSize: 12,
+  },
+  // Generic modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalBox: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalError: {
+    color: '#f66',
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  modalRow: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  modalRowText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  modalRowMeta: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  modalEmpty: {
+    color: '#666',
+    textAlign: 'center',
+    padding: 24,
   },
 });

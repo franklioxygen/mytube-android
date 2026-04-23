@@ -67,5 +67,6 @@ export function putVideo(
 }
 
 export function deleteVideo(id: string): Promise<{ success: boolean }> {
-  return apiDelete<{ success: boolean }>(`/videos/${id}`);
+  const path = `/videos/${id}`;
+  return apiDelete<{ success: boolean }>(path, buildInFlightKey('DELETE', path));
 }
