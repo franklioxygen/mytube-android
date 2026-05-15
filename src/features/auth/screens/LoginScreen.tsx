@@ -87,25 +87,6 @@ export function LoginScreen({ onLoginSuccess, onChangeBackendUrl }: LoginScreenP
   }, [countdown]);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadCooldown = async () => {
-      try {
-        const res = await AuthRepository.getResetPasswordCooldown();
-        if (!cancelled && typeof res.cooldown === 'number' && res.cooldown > 0) {
-          const next = Math.ceil(res.cooldown / 1000);
-          setCountdown(prev => Math.max(prev, next));
-        }
-      } catch {
-        // Endpoint is optional for UX; ignore errors.
-      }
-    };
-    loadCooldown();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     let isCancelled = false;
 
     const loadPasskeysStatus = async () => {

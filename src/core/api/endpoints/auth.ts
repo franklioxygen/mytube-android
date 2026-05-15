@@ -19,10 +19,6 @@ export function getPasskeysExists(): Promise<PasskeysExistsResponse> {
   return apiGet<PasskeysExistsResponse>('/settings/passkeys/exists');
 }
 
-export function getResetPasswordCooldown(): Promise<{ cooldown: number }> {
-  return apiGet<{ cooldown: number }>('/settings/reset-password-cooldown');
-}
-
 export function verifyAdminPassword(password: string): Promise<LoginResponse> {
   const path = '/settings/verify-admin-password';
   return apiPost<LoginResponse>(

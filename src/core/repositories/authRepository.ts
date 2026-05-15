@@ -20,9 +20,6 @@ export const AuthRepository = {
   getPasskeysExists: (): Promise<PasskeysExistsResponse> =>
     authEndpoints.getPasskeysExists(),
 
-  getResetPasswordCooldown: (): Promise<{ cooldown: number }> =>
-    authEndpoints.getResetPasswordCooldown(),
-
   verifyAdminPassword: (password: string): Promise<LoginResponse> =>
     authEndpoints.verifyAdminPassword(password),
 
