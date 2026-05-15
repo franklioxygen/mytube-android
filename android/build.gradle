@@ -12,9 +12,35 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
+        // Pin AGP explicitly so the Android Studio Upgrade Assistant can find
+        // and bump the version. The RN gradle plugin ships its own version
+        // catalog default (currently 8.12.0); this explicit pin overrides it.
+        classpath("com.android.tools.build:gradle:8.13.2")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+// Allow per-user override of the node binary used by react-native gradle plugin
+// codegen + bundle tasks. Useful when Android Studio is launched with a stripped
+// PATH that doesn't include the user's node install (e.g. Homebrew on macOS).
+// Set in ~/.gradle/gradle.properties: nodeBinary=/opt/homebrew/bin/node
+//
+// Must run BEFORE the react.rootproject plugin (which can evaluate subprojects
+// during apply) so that every subproject still has an afterEvaluate slot open.
+gradle.beforeProject { proj ->
+    proj.afterEvaluate {
+        def nodeBinary = proj.findProperty("nodeBinary")
+        if (nodeBinary) {
+            def reactExt = proj.extensions.findByName("react")
+            if (reactExt != null) {
+                try {
+                    reactExt.nodeExecutableAndArgs.set([nodeBinary as String])
+                } catch (Exception ignored) {
+                    reactExt.nodeExecutableAndArgs = [nodeBinary as String]
+                }
+            }
+        }
     }
 }
 
