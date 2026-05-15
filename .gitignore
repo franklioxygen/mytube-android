@@ -38,3 +38,11 @@ coverage/
 
 # Claude Code
 .claude/
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md
+
+
+# Reports
+reports/
