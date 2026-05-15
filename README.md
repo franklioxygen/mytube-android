@@ -1,103 +1,92 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# MyTube for Android
 
-# Getting Started
+Android client for [**MyTube**](https://github.com/franklioxygen/mytube) — your self-hosted video library for YouTube, Bilibili, Twitch, MissAV, and other [yt-dlp-supported sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Stream your collections, manage downloads, and keep tabs on your subscriptions from your phone or tablet.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+Built with React Native. Talks to a MyTube backend you host yourself.
 
-## Step 1: Start Metro
+[中文](README-zh.md)
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+---
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## What you can do
+
+- **Browse and play** your MyTube library with rating, view counts, and resume position.
+- **Search and filter** videos by source, author, tags, and collection.
+- **Manage collections** — create, add, remove, and delete.
+- **Watch subscriptions** — see what your subscribed YouTube/Bilibili/Twitch channels are auto-downloading.
+- **See download status** — pending, active, history.
+- **Cast-friendly UI** with subtitles, loop, fullscreen, and variable playback speed.
+- **Login protection** — supports MyTube's admin/visitor passwords and passkeys.
+- **Tablet layout** — adapts for larger screens with a side menu.
+
+---
+
+## Requirements
+
+Before installing the app, you need:
+
+1. **An Android device** running Android 7.0 (Nougat, API 24) or newer.
+2. **A running MyTube backend** that the device can reach over the network. See the [MyTube setup guide](https://github.com/franklioxygen/mytube#getting-started) to install it (Docker recommended).
+3. **A URL pointing to that backend** — either an HTTPS public URL (e.g. via [Cloudflare Tunnel](https://github.com/franklioxygen/mytube#cloudflare-tunnel) — built into MyTube) or a LAN address like `http://192.168.1.50:5551` if you only use it on your home network.
+
+> **Tip:** If you use MyTube's built-in Cloudflare Tunnel, you'll get a free HTTPS URL like `https://mytube.example.com` that works from anywhere. That's the simplest path for using this app outside your home Wi-Fi.
+
+---
+
+## Install
+
+1. Download the latest APK from the [Releases page](https://github.com/franklioxygen/mytube-android/releases).
+2. On your Android device, open the file and tap **Install**. You may need to allow installation from unknown sources for your browser or file manager.
+3. Open **MyTube** from your app drawer.
+
+> Google Play distribution is not currently available. The app is installed by sideloading the signed APK.
+
+---
+
+## First-time setup — connect to your MyTube backend
+
+When you launch the app for the first time you'll see the **Backend URL** screen. This is where you point the app at your MyTube server.
+
+1. Enter the URL of your MyTube backend.
+   - **HTTPS public URL** (recommended): `https://mytube.example.com`
+   - **Local network**: `http://192.168.1.50:5551` (replace with your server's LAN IP and port)
+   - Do **not** include a trailing `/api` — the app appends that for you.
+2. Tap **Test connection**. A green check means the server is reachable.
+3. Tap **Save**. You'll be taken to the login screen (if your MyTube has login protection enabled) or directly to the library.
+4. Log in with the admin or visitor password set in your MyTube settings, or use a registered passkey.
+
+You can change the backend URL later by clearing the app's data, or via the in-app settings (depending on your MyTube role).
+
+---
+
+## Documentation
+
+- [Setup guide](documents/setup.md) — full step-by-step for installing the app and connecting to MyTube.
+- [Build from source](documents/build-from-source.md) — for developers and contributors.
+- [Troubleshooting](documents/troubleshooting.md) — common issues and fixes.
+
+---
+
+## Build from source
+
+If you'd rather build the APK yourself or contribute:
 
 ```sh
-# Using npm
-npm start
-
-# OR using Yarn
-yarn start
+git clone https://github.com/franklioxygen/mytube-android.git
+cd mytube-android
+npm install
+npm run android   # boots Metro and installs on a connected device/emulator
 ```
 
-## Step 2: Build and run your app
+See [documents/build-from-source.md](documents/build-from-source.md) for prerequisites (Node, JDK 21, Android SDK), per-machine configuration (the `nodeBinary` gradle property for Android Studio launches), and how to produce a release APK.
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+---
 
-### Android
+## Related projects
 
-```sh
-# Using npm
-npm run android
+- **[MyTube](https://github.com/franklioxygen/mytube)** — the backend + web frontend this app talks to. Self-hosted, Docker-ready, open source.
+- **[MyTube Chrome extension](https://github.com/franklioxygen/mytube/tree/master/chrome-extension)** — queue downloads from any browser tab.
 
-# OR using Yarn
-yarn android
-```
+## License
 
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-### Android Studio Debug Runbook
-
-If you run from Android Studio and see `Unable to load script`, follow:
-
-`ANDROID_STUDIO_DEBUG_RUNBOOK.md`
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+See [LICENSE](LICENSE) in the repository root.
