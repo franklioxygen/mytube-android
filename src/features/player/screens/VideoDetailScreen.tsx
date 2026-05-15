@@ -48,6 +48,7 @@ import {
   getCloudVideoRedirectUrl,
   getVideoPlaybackUrl,
   getThumbnailUrl,
+  getAuthorAvatarUrl,
 } from '../../../core/utils/mediaUrl';
 import { getRuntimeHostBase } from '../../../core/api/runtimeBaseUrl';
 import { useAuth } from '../../../core/auth/AuthContext';
@@ -99,13 +100,17 @@ function sourceLabel(source: string | undefined): string {
   return source.charAt(0).toUpperCase() + source.slice(1);
 }
 
-function sourceBadgeColor(source: string | undefined): string {
-  switch (source) {
-    case 'youtube': return '#cc0000';
-    case 'bilibili': return '#00a1d6';
-    case 'local': return '#555';
-    default: return '#555';
+/** Format YYYYMMDD or ISO-like date strings to YYYY-MM-DD; returns null when not parseable. */
+function formatPublishDate(date: string | undefined): string | null {
+  if (!date) return null;
+  if (/^\d{8}$/.test(date)) {
+    return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
   }
+  const ms = new Date(date).getTime();
+  if (Number.isFinite(ms) && ms > 0) {
+    return new Date(ms).toISOString().split('T')[0];
+  }
+  return null;
 }
 
 /** Draggable progress slider with time display. */
@@ -278,6 +283,8 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   // Description + tags state
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionClamped, setDescriptionClamped] = useState(false);
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [titleClamped, setTitleClamped] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [localTags, setLocalTags] = useState<string[]>([]);
@@ -324,7 +331,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     select: list => (Array.isArray(list) ? list : []),
   });
   const upNextVideos = useMemo(
-    () => allVideos.filter(v => v.id !== videoId),
+    () => allVideos.filter(v => v.id !== videoId).slice(0, 10),
     [allVideos, videoId]
   );
 
@@ -769,6 +776,16 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     [availableTags, localTags]
   );
 
+  const authorAvatarUrl = useMemo(
+    () => (video ? getAuthorAvatarUrl(video) : ''),
+    [video]
+  );
+
+  const formattedPublishDate = useMemo(
+    () => formatPublishDate(video?.date),
+    [video]
+  );
+
   if (loading && !video) {
     return (
       <View style={styles.centered}>
@@ -822,30 +839,29 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
             )}
           </View>
 
-          {/* ── 2. Progress bar ── */}
+          {/* ── 2. Progress bar + inline toggles ── */}
           <View style={styles.controlsBar}>
-            <ProgressSlider
-              currentTime={progress}
-              duration={duration}
-              onSeekTo={handleSeekTo}
-            />
-
-            {/* ── 3. Controls row ── */}
-            <View style={styles.controlsRow}>
+            <View style={styles.progressControlRow}>
               <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={handleTogglePlay}>
-                <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
+                <MaterialIcons name={isPaused ? 'play-arrow' : 'pause'} size={24} color="#fff" />
               </Pressable>
-              <View style={styles.controlsRowSpacer} />
+              <View style={styles.progressSliderWrap}>
+                <ProgressSlider
+                  currentTime={progress}
+                  duration={duration}
+                  onSeekTo={handleSeekTo}
+                />
+              </View>
               {textTracks.length > 0 && (
                 <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={() => setSubtitlesEnabled(e => !e)}>
-                  <MaterialIcons name="subtitles" size={28} color={subtitlesEnabled ? '#0a7ea4' : '#fff'} />
+                  <MaterialIcons name="subtitles" size={24} color={subtitlesEnabled ? '#0a7ea4' : '#fff'} />
                 </Pressable>
               )}
               <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={() => setIsLooping(l => !l)}>
-                <MaterialIcons name="repeat" size={28} color={isLooping ? '#0a7ea4' : '#fff'} />
+                <MaterialIcons name="repeat" size={24} color={isLooping ? '#0a7ea4' : '#fff'} />
               </Pressable>
               <Pressable style={({ pressed }) => [styles.controlBtn, pressed && styles.controlBtnPressed]} onPress={handleToggleFullscreen}>
-                <MaterialIcons name={isFullscreen ? 'fullscreen-exit' : 'fullscreen'} size={28} color="#fff" />
+                <MaterialIcons name={isFullscreen ? 'fullscreen-exit' : 'fullscreen'} size={24} color="#fff" />
               </Pressable>
             </View>
             <View style={styles.seekBar}>
@@ -882,99 +898,182 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
       {/* ── Divider ── */}
       <View style={styles.divider} />
 
-      {/* ── 4. Video info ── */}
+      {/* ── 4. Title + rating ── */}
       <View style={styles.section}>
-        <Text style={styles.title}>{video.title}</Text>
+        <TouchableOpacity
+          style={styles.titleRow}
+          onPress={() => titleClamped && setTitleExpanded(e => !e)}
+          activeOpacity={titleClamped ? 0.6 : 1}
+          disabled={!titleClamped}
+        >
+          <View style={styles.titleTextWrap}>
+            <Text
+              style={[styles.title, styles.titleHidden]}
+              onTextLayout={e => {
+                if (!titleExpanded) {
+                  setTitleClamped(e.nativeEvent.lines.length > 2);
+                }
+              }}
+            >
+              {video.title}
+            </Text>
+            <Text
+              style={styles.title}
+              numberOfLines={titleExpanded ? undefined : 2}
+            >
+              {video.title}
+            </Text>
+          </View>
+          {titleClamped && (
+            <MaterialIcons
+              name={titleExpanded ? 'expand-less' : 'expand-more'}
+              size={22}
+              color="#aaa"
+              style={styles.titleChevron}
+            />
+          )}
+        </TouchableOpacity>
 
-        <View style={styles.authorRow}>
-          {video.author != null &&
-            (onAuthorPress != null ? (
-              <TouchableOpacity onPress={() => onAuthorPress(video.author!)}>
-                <Text style={styles.author}>{video.author}</Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={styles.author}>{video.author}</Text>
+        <View style={styles.ratingRow}>
+          <View style={styles.starsRow}>
+            {[1, 2, 3, 4, 5].map(n => {
+              const filled = rating != null && n <= rating;
+              const iconColor = filled ? '#f5c518' : '#666';
+              const iconName = filled ? 'star' : 'star-border';
+              return canWrite ? (
+                <TouchableOpacity key={n} onPress={() => handleRate(n)} style={styles.starButton}>
+                  <MaterialIcons name={iconName} size={22} color={iconColor} />
+                </TouchableOpacity>
+              ) : (
+                <View key={n} style={styles.starButton}>
+                  <MaterialIcons name={iconName} size={22} color={iconColor} />
+                </View>
+              );
+            })}
+          </View>
+          {rating == null && canWrite && (
+            <Text style={styles.ratingHint}>Rate this video</Text>
+          )}
+          <View style={styles.ratingSpacer} />
+          {video.viewCount != null && (
+            <Text style={styles.viewCountText}>
+              {video.viewCount.toLocaleString()} views
+            </Text>
+          )}
+        </View>
+
+      </View>
+
+      {/* ── 5. Tags ── */}
+      {canWrite && (
+        <TouchableOpacity
+          style={styles.tagsSection}
+          onPress={() => setTagsModalVisible(true)}
+        >
+          <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
+          {localTags.length === 0 ? (
+            <Text style={styles.tagsPlaceholder}>Tags</Text>
+          ) : (
+            <View style={styles.tagsChips}>
+              {localTags.map(tag => (
+                <View key={tag} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{tag}</Text>
+                  <TouchableOpacity onPress={() => handleRemoveTag(tag)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                    <MaterialIcons name="close" size={12} color="#aaa" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <MaterialIcons name="add" size={16} color="#888" />
+            </View>
+          )}
+        </TouchableOpacity>
+      )}
+      {!canWrite && localTags.length > 0 && (
+        <View style={styles.tagsSection}>
+          <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
+          <View style={styles.tagsChips}>
+            {localTags.map(tag => (
+              <View key={tag} style={styles.tagChip}>
+                <Text style={styles.tagChipText}>{tag}</Text>
+              </View>
             ))}
-          {authorChannelUrl != null && (
-            <TouchableOpacity onPress={() => runAsync(handleOpenAuthorChannel())}>
-              <Text style={styles.channelLink}>Open channel</Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── 6. Author block + action buttons ── */}
+      <View style={styles.authorActionsRow}>
+        <TouchableOpacity
+          style={styles.authorBlock}
+          onPress={() => {
+            if (authorChannelUrl) {
+              runAsync(handleOpenAuthorChannel());
+            } else if (onAuthorPress != null && video.author != null) {
+              onAuthorPress(video.author);
+            }
+          }}
+          activeOpacity={0.7}
+          disabled={
+            video.author == null ||
+            (authorChannelUrl == null && onAuthorPress == null)
+          }
+        >
+          <View style={styles.avatar}>
+            {authorAvatarUrl ? (
+              <Image source={{ uri: authorAvatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarInitial}>
+                {video.author ? video.author.charAt(0).toUpperCase() : 'A'}
+              </Text>
+            )}
+          </View>
+          <View style={styles.authorTextBlock}>
+            <Text style={styles.authorName} numberOfLines={1}>
+              {video.author ?? 'Unknown'}
+            </Text>
+            {formattedPublishDate != null && (
+              <Text style={styles.authorDate}>{formattedPublishDate}</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={styles.iconActionBtn}
+            onPress={() => runAsync(handleCopyUrl())}
+            accessibilityLabel="Copy URL"
+          >
+            <MaterialIcons name="content-copy" size={18} color="#aaa" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconActionBtn}
+            onPress={() => runAsync(handleShare())}
+            accessibilityLabel="Share"
+          >
+            <MaterialIcons name="share" size={18} color="#aaa" />
+          </TouchableOpacity>
+          {canWrite && (
+            <TouchableOpacity
+              style={styles.iconActionBtn}
+              onPress={() => setAddToCollectionModalVisible(true)}
+              accessibilityLabel="Add to collection"
+            >
+              <MaterialIcons name="add" size={18} color="#aaa" />
+            </TouchableOpacity>
+          )}
+          {canWrite && (
+            <TouchableOpacity
+              style={[styles.iconActionBtn, styles.iconActionBtnDanger]}
+              onPress={() => setDeleteModalVisible(true)}
+              accessibilityLabel="Delete"
+            >
+              <MaterialIcons name="delete" size={18} color="#f66" />
             </TouchableOpacity>
           )}
         </View>
-
-        <View style={styles.statsRow}>
-          {video.viewCount != null && (
-            <Text style={styles.statItem}>{video.viewCount.toLocaleString()} views</Text>
-          )}
-          {video.source != null && (
-            <View style={[styles.sourceBadge, { backgroundColor: sourceBadgeColor(video.source) }]}>
-              <Text style={styles.sourceBadgeText}>{sourceLabel(video.source)}</Text>
-            </View>
-          )}
-          {videoResolution != null && (
-            <View style={styles.resolutionBadge}>
-              <Text style={styles.resolutionBadgeText}>{videoResolution}</Text>
-            </View>
-          )}
-          {progress > 0 && (
-            <View style={styles.resumeBadge}>
-              <MaterialIcons name="history" size={12} color="#aaa" />
-              <Text style={styles.resumeText}>Resume {formatSeconds(progress)}</Text>
-            </View>
-          )}
-        </View>
-
-        {canWrite && (
-          <View style={styles.ratingRow}>
-            <Text style={styles.ratingLabel}>Rate: </Text>
-            {[1, 2, 3, 4, 5].map(n => (
-              <TouchableOpacity key={n} onPress={() => handleRate(n)} style={styles.starButton}>
-                <Text style={[styles.starText, rating != null && n <= rating && styles.starTextActive]}>
-                  {rating != null && n <= rating ? '★' : '☆'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
       </View>
 
-      {/* ── Divider ── */}
-      <View style={styles.divider} />
-
-      {/* ── 5. Action buttons row ── */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleCopyUrl())}>
-          <MaterialIcons name="content-copy" size={20} color="#aaa" />
-          <Text style={styles.actionBtnText}>Copy URL</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => runAsync(handleShare())}>
-          <MaterialIcons name="share" size={20} color="#aaa" />
-          <Text style={styles.actionBtnText}>Share</Text>
-        </TouchableOpacity>
-        {canWrite && (
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => setAddToCollectionModalVisible(true)}
-          >
-            <MaterialIcons name="add" size={20} color="#aaa" />
-            <Text style={styles.actionBtnText}>Collection</Text>
-          </TouchableOpacity>
-        )}
-        {canWrite && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnDanger]}
-            onPress={() => setDeleteModalVisible(true)}
-          >
-            <MaterialIcons name="delete" size={20} color="#f66" />
-            <Text style={[styles.actionBtnText, styles.actionBtnTextDanger]}>Delete</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* ── Divider ── */}
-      <View style={styles.divider} />
-
-      {/* ── 6. Description ── */}
+      {/* ── 7. Description ── */}
       {hasDescription && (
         <View style={styles.section}>
           <Text
@@ -1011,79 +1110,41 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         </View>
       )}
 
-      {/* ── 7. Tags ── */}
-      {canWrite && (
-        <TouchableOpacity
-          style={styles.tagsSection}
-          onPress={() => setTagsModalVisible(true)}
-        >
-          <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
-          {localTags.length === 0 ? (
-            <Text style={styles.tagsPlaceholder}>Add tags…</Text>
-          ) : (
-            <View style={styles.tagsChips}>
-              {localTags.map(tag => (
-                <View key={tag} style={styles.tagChip}>
-                  <Text style={styles.tagChipText}>{tag}</Text>
-                  <TouchableOpacity onPress={() => handleRemoveTag(tag)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-                    <MaterialIcons name="close" size={12} color="#aaa" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <MaterialIcons name="add" size={16} color="#888" />
-            </View>
-          )}
-        </TouchableOpacity>
-      )}
-      {!canWrite && localTags.length > 0 && (
-        <View style={styles.tagsSection}>
-          <MaterialIcons name="local-offer" size={15} color="#888" style={{ marginRight: 4 }} />
-          <View style={styles.tagsChips}>
-            {localTags.map(tag => (
-              <View key={tag} style={styles.tagChip}>
-                <Text style={styles.tagChipText}>{tag}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
       {/* ── Divider ── */}
       <View style={styles.divider} />
 
-      {/* ── 8. Metadata ── */}
-      <View style={styles.metadataSection}>
+      {/* ── 8. Compact metadata bar ── */}
+      <View style={styles.metadataBar}>
         {video.sourceUrl != null && (
-          <TouchableOpacity style={styles.metaRow} onPress={() => runAsync(handleOpenSourceUrl())}>
-            <MaterialIcons name="link" size={15} color="#0a7ea4" />
-            <Text style={styles.metaRowText} numberOfLines={1}>{video.sourceUrl}</Text>
-            <MaterialIcons name="open-in-new" size={13} color="#666" />
+          <TouchableOpacity style={styles.metaItem} onPress={() => runAsync(handleOpenSourceUrl())}>
+            <MaterialIcons name="link" size={14} color="#0a7ea4" />
+            <Text style={styles.metaItemLink}>Original Link</Text>
           </TouchableOpacity>
         )}
         {(playbackUrl || video.sourceUrl) && (
-          <TouchableOpacity style={styles.metaRow} onPress={() => runAsync(handleOpenDownload())}>
-            <MaterialIcons name="download" size={15} color="#0a7ea4" />
-            <Text style={styles.metaRowLabel}>Download</Text>
+          <TouchableOpacity style={styles.metaItem} onPress={() => runAsync(handleOpenDownload())}>
+            <MaterialIcons name="download" size={14} color="#0a7ea4" />
+            <Text style={styles.metaItemLink}>Download</Text>
           </TouchableOpacity>
         )}
         {video.source != null && (
-          <View style={styles.metaRow}>
-            <MaterialIcons name="video-library" size={15} color="#666" />
-            <Text style={styles.metaRowText}>{sourceLabel(video.source)}</Text>
+          <View style={styles.metaItem}>
+            <MaterialIcons name="video-library" size={14} color="#888" />
+            <Text style={styles.metaItemText}>{sourceLabel(video.source)}</Text>
           </View>
         )}
-        {(video as any).addedAt != null && (
-          <View style={styles.metaRow}>
-            <MaterialIcons name="calendar-today" size={15} color="#666" />
-            <Text style={styles.metaRowText}>
-              {new Date((video as any).addedAt).toISOString().split('T')[0]}
+        {video.addedAt != null && (
+          <View style={styles.metaItem}>
+            <MaterialIcons name="calendar-today" size={14} color="#888" />
+            <Text style={styles.metaItemText}>
+              {new Date(video.addedAt).toISOString().split('T')[0]}
             </Text>
           </View>
         )}
         {videoResolution != null && (
-          <View style={styles.metaRow}>
-            <MaterialIcons name="high-quality" size={15} color="#666" />
-            <Text style={styles.metaRowText}>{videoResolution}</Text>
+          <View style={styles.metaItem}>
+            <MaterialIcons name="high-quality" size={14} color="#888" />
+            <Text style={styles.metaItemText}>{videoResolution}</Text>
           </View>
         )}
       </View>
@@ -1091,28 +1152,33 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
       {/* ── Divider ── */}
       <View style={styles.divider} />
 
-      {/* ── 9. Comments ── */}
+      {/* ── 9. Latest Comments ── */}
       <View style={styles.commentsSection}>
-        <Text style={styles.commentsTitle}>Comments</Text>
-        {!commentsLoaded ? (
-          <TouchableOpacity
-            style={styles.loadCommentsButton}
-            onPress={() => runAsync(handleLoadComments())}
-            disabled={commentsLoading}
-          >
-            <Text style={styles.loadCommentsButtonText}>
-              {commentsLoading ? 'Loading…' : 'Load comments'}
-            </Text>
-          </TouchableOpacity>
-        ) : comments.length === 0 ? (
-          <Text style={styles.noComments}>No comments yet.</Text>
-        ) : (
-          comments.map(c => (
-            <View key={c.id} style={styles.comment}>
-              <Text style={styles.commentAuthor}>{c.author}</Text>
-              <Text style={styles.commentContent}>{c.content}</Text>
-            </View>
-          ))
+        <View style={styles.commentsHeaderRow}>
+          <Text style={styles.commentsTitle}>Latest Comments</Text>
+          {!commentsLoaded && (
+            <TouchableOpacity
+              style={styles.showCommentsButton}
+              onPress={() => runAsync(handleLoadComments())}
+              disabled={commentsLoading}
+            >
+              <Text style={styles.showCommentsButtonText}>
+                {commentsLoading ? 'Loading…' : 'Show Comments'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {commentsLoaded && (
+          comments.length === 0 ? (
+            <Text style={styles.noComments}>No comments yet.</Text>
+          ) : (
+            comments.map(c => (
+              <View key={c.id} style={styles.comment}>
+                <Text style={styles.commentAuthor}>{c.author}</Text>
+                <Text style={styles.commentContent}>{c.content}</Text>
+              </View>
+            ))
+          )
         )}
       </View>
 
@@ -1500,24 +1566,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#111',
     paddingBottom: 8,
   },
-  controlsRow: {
+  progressControlRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  progressSliderWrap: {
+    flex: 1,
   },
   controlBtn: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 22,
+    borderRadius: 18,
   },
   controlBtnPressed: {
     backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  controlsRowSpacer: {
-    flex: 1,
   },
   seekBar: {
     flexDirection: 'row',
@@ -1548,119 +1613,118 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  titleTextWrap: {
+    flex: 1,
+  },
+  titleHidden: {
+    position: 'absolute',
+    opacity: 0,
+    zIndex: -1,
+    marginBottom: 0,
+  },
   title: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
     lineHeight: 24,
-    marginBottom: 8,
   },
-  authorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-  author: {
-    color: '#aaa',
-    fontSize: 14,
-  },
-  channelLink: {
-    color: '#0a7ea4',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 4,
-  },
-  statItem: {
-    color: '#888',
-    fontSize: 13,
-  },
-  sourceBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  sourceBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  resolutionBadge: {
-    backgroundColor: '#1e3a1e',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  resolutionBadgeText: {
-    color: '#5be85b',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  resumeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  resumeText: {
-    color: '#888',
-    fontSize: 12,
+  titleChevron: {
+    marginLeft: 6,
+    marginTop: 1,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 4,
   },
-  ratingLabel: {
-    color: '#aaa',
-    marginRight: 4,
-    fontSize: 13,
+  starsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   starButton: {
-    paddingHorizontal: 3,
+    paddingHorizontal: 1,
     paddingVertical: 2,
   },
-  starText: {
-    fontSize: 24,
-    color: '#555',
+  ratingHint: {
+    color: '#888',
+    fontSize: 12,
+    marginLeft: 8,
   },
-  starTextActive: {
-    color: '#f5c518',
+  ratingSpacer: {
+    flex: 1,
   },
-  actionRow: {
+  viewCountText: {
+    color: '#888',
+    fontSize: 13,
+  },
+  authorActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    flexWrap: 'wrap',
+    paddingVertical: 10,
+    gap: 12,
   },
-  actionBtn: {
+  authorBlock: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
+    gap: 10,
+    minWidth: 0,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0a7ea4',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+  },
+  avatarInitial: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  authorTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  authorName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  authorDate: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 1,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  iconActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 6,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#444',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  actionBtnDanger: {
+  iconActionBtnDanger: {
     borderColor: '#5a2222',
-  },
-  actionBtnText: {
-    color: '#aaa',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  actionBtnTextDanger: {
-    color: '#f66',
   },
   descriptionHidden: {
     position: 'absolute',
@@ -1722,46 +1786,55 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  metadataSection: {
+  metadataBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 8,
+    columnGap: 16,
+    rowGap: 8,
+    backgroundColor: '#222',
   },
-  metaRow: {
+  metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
-  metaRowText: {
-    color: '#aaa',
-    fontSize: 13,
-    flex: 1,
-  },
-  metaRowLabel: {
+  metaItemLink: {
     color: '#0a7ea4',
     fontSize: 13,
     fontWeight: '600',
+  },
+  metaItemText: {
+    color: '#aaa',
+    fontSize: 13,
   },
   commentsSection: {
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  commentsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   commentsTitle: {
     color: '#fff',
     fontSize: 17,
     fontWeight: '700',
-    marginBottom: 12,
   },
-  loadCommentsButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#333',
-    borderRadius: 8,
-    alignSelf: 'flex-start',
+  showCommentsButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#0a7ea4',
+    borderRadius: 6,
   },
-  loadCommentsButtonText: {
-    color: '#fff',
-    fontSize: 14,
+  showCommentsButtonText: {
+    color: '#0a7ea4',
+    fontSize: 13,
     fontWeight: '600',
   },
   noComments: {

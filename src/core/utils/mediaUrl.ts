@@ -67,6 +67,17 @@ export function getCloudVideoRedirectUrl(filename: string): string {
   return toAbsoluteUrl(`/cloud/videos/${encodeURIComponent(normalizedFilename)}`);
 }
 
+/** Author avatar URL. Returns empty string for cloud: paths (caller must fetch signed URL) or missing data. */
+export function getAuthorAvatarUrl(video: Video): string {
+  const path = video.authorAvatarPath;
+  if (!path) return '';
+  if (isAbsoluteHttpUrl(path)) {
+    return toAbsoluteUrl(path);
+  }
+  if (path.startsWith('cloud:')) return '';
+  return toAbsoluteUrl(path);
+}
+
 /** Thumbnail URL. Use signedThumbnailUrl or local thumbnailPath. */
 export function getThumbnailUrl(video: Video): string {
   if (video.signedThumbnailUrl) {
