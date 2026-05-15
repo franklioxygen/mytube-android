@@ -17,6 +17,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {
   VideoRepository,
   videoQueryKeys,
@@ -44,14 +45,14 @@ export type SortOption =
   | 'random';
 
 const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
-  { value: 'date_added_newest',  label: 'Date Added (Newest)',        icon: '⏱' },
-  { value: 'date_added_oldest',  label: 'Date Added (Oldest)',        icon: '⏱' },
-  { value: 'views_high_to_low',  label: 'Views (High to Low)',        icon: '👁' },
-  { value: 'views_low_to_high',  label: 'Views (Low to High)',        icon: '👁' },
-  { value: 'name_az',            label: 'Name (A-Z)',                 icon: 'AZ' },
-  { value: 'create_date_newest', label: 'Video Create Date (Newest)', icon: '⏱' },
-  { value: 'create_date_oldest', label: 'Video Create Date (Oldest)', icon: '⏱' },
-  { value: 'random',             label: 'Random Shuffle',             icon: '⇌' },
+  { value: 'date_added_newest',  label: 'Date Added (Newest)',        icon: 'access-time' },
+  { value: 'date_added_oldest',  label: 'Date Added (Oldest)',        icon: 'access-time' },
+  { value: 'views_high_to_low',  label: 'Views (High to Low)',        icon: 'visibility' },
+  { value: 'views_low_to_high',  label: 'Views (Low to High)',        icon: 'visibility' },
+  { value: 'name_az',            label: 'Name (A-Z)',                 icon: 'sort-by-alpha' },
+  { value: 'create_date_newest', label: 'Video Create Date (Newest)', icon: 'access-time' },
+  { value: 'create_date_oldest', label: 'Video Create Date (Oldest)', icon: 'access-time' },
+  { value: 'random',             label: 'Random Shuffle',             icon: 'shuffle' },
 ];
 
 interface HomeScreenProps {
@@ -170,13 +171,16 @@ function SortDropdown({
                 onPress={() => { onSelect(opt.value); onClose(); }}
                 activeOpacity={0.7}
               >
-                <Text style={[dropStyles.icon, opt.icon === 'AZ' && dropStyles.iconAz]}>
-                  {opt.icon}
-                </Text>
+                <MaterialIcons
+                  name={opt.icon}
+                  size={18}
+                  color={active ? '#fff' : '#aaa'}
+                  style={dropStyles.icon}
+                />
                 <Text style={[dropStyles.label, active && dropStyles.labelActive]}>
                   {opt.label}
                 </Text>
-                {active && <Text style={dropStyles.check}>✓</Text>}
+                {active && <MaterialIcons name="check" size={16} color="#0a7ea4" />}
               </TouchableOpacity>
             );
           })}
@@ -221,15 +225,8 @@ const dropStyles = StyleSheet.create({
     backgroundColor: '#1e3a4a',
   },
   icon: {
-    fontSize: 15,
     width: 22,
     textAlign: 'center',
-    color: '#aaa',
-  },
-  iconAz: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#aaa',
   },
   label: {
     flex: 1,
@@ -239,11 +236,6 @@ const dropStyles = StyleSheet.create({
   labelActive: {
     color: '#fff',
     fontWeight: '600',
-  },
-  check: {
-    color: '#0a7ea4',
-    fontSize: 14,
-    fontWeight: '700',
   },
 });
 
@@ -569,11 +561,11 @@ export function HomeScreen({ onVideoPress }: HomeScreenProps) {
           onPress={() => setSortDropdownVisible(true)}
           accessibilityLabel="Sort"
         >
-          <View style={styles.sortIcon}>
-            <View style={[styles.sortIconLine, sortDropdownVisible && styles.sortIconLineActive]} />
-            <View style={[styles.sortIconLine, sortDropdownVisible && styles.sortIconLineActive, { width: 10 }]} />
-            <View style={[styles.sortIconLine, sortDropdownVisible && styles.sortIconLineActive, { width: 6 }]} />
-          </View>
+          <MaterialIcons
+            name="sort"
+            size={20}
+            color={sortDropdownVisible ? '#0a7ea4' : '#888'}
+          />
         </TouchableOpacity>
       </View>
 
@@ -758,19 +750,6 @@ const styles = StyleSheet.create({
   sortButtonActive: {
     borderColor: '#0a7ea4',
     backgroundColor: '#1e3a4a',
-  },
-  sortIcon: {
-    gap: 3,
-    alignItems: 'flex-start',
-  },
-  sortIconLine: {
-    width: 14,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#777',
-  },
-  sortIconLineActive: {
-    backgroundColor: '#0a7ea4',
   },
   // ── Filter banner ──
   filterBanner: {
