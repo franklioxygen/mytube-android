@@ -6,6 +6,26 @@
 
 [English](README.md)
 
+## 截图
+
+**平板**
+
+<table>
+  <tr>
+    <td width="50%"><img src="https://github.com/user-attachments/assets/37c6d7a0-ddbf-458b-b565-4273d018809c" alt="Tablet — library" /></td>
+    <td width="50%"><img src="https://github.com/user-attachments/assets/8c28f3c7-6fda-4c4f-bcc8-fc642d2b9d05" alt="Tablet — video detail" /></td>
+  </tr>
+</table>
+
+**手机**
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="https://github.com/user-attachments/assets/778b78de-a000-4fff-b3fb-05b452f405d2" alt="Phone — library" width="280" /></td>
+    <td align="center" width="50%"><img src="https://github.com/user-attachments/assets/cbd67ed1-cf84-4eb4-9e1a-e487a741fa66" alt="Phone — video detail" width="280" /></td>
+  </tr>
+</table>
+
 ---
 
 ## 主要功能
