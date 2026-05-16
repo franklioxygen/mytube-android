@@ -16,6 +16,7 @@ import {
   TextInput,
   Modal,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SettingsRepository, settingsQueryKeys } from '../../../core/repositories';
@@ -43,6 +44,8 @@ export function SettingsScreen({ onLogout, onChangeBackendUrl }: SettingsScreenP
   const { role, loginRequired, logout } = useAuth();
   const queryClient = useQueryClient();
   const { show, showError } = useSnackbar();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
   const canEditGeneralSettings = canMutate(role, loginRequired);
   const canEditCloudflareSettings = canEditSettings(
     role,
@@ -222,47 +225,203 @@ export function SettingsScreen({ onLogout, onChangeBackendUrl }: SettingsScreenP
     );
   }
 
+  const halfCard = isTablet && styles.sectionHalf;
+  const fullCard = isTablet && styles.sectionFull;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {error != null && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={refetch}>
-            <Text style={styles.retryLink}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('account')}</Text>
-        <Text style={styles.role}>Role: {role ?? '—'}</Text>
-        <TouchableOpacity style={styles.button} onPress={handleLogout}>
-          <Text style={styles.buttonText}>{t('logOut')}</Text>
-        </TouchableOpacity>
-        {onChangeBackendUrl != null && (
-          <TouchableOpacity style={[styles.button, styles.buttonDanger]} onPress={onChangeBackendUrl}>
-            <Text style={styles.buttonText}>Change backend URL</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('language')}</Text>
-        {canEditGeneralSettings ? (
-          <TouchableOpacity
-            style={styles.languageRow}
-            onPress={() => setLanguagePickerVisible(true)}
-            accessibilityLabel={t('language')}
-            accessibilityRole="button"
-          >
-            <Text style={styles.row}>{currentLocaleLabel}</Text>
-            <Text style={styles.rowHint}>Tap to change</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.languageRow}>
-            <Text style={styles.row}>{currentLocaleLabel}</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, isTablet && styles.contentTablet]}
+    >
+      <View style={[styles.inner, isTablet && styles.innerTablet]}>
+        {error != null && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={refetch}>
+              <Text style={styles.retryLink}>Retry</Text>
+            </TouchableOpacity>
           </View>
         )}
+
+        <View style={[styles.sectionsGrid, isTablet && styles.sectionsGridTablet]}>
+          <View style={[styles.section, halfCard]}>
+            <Text style={styles.sectionTitle}>{t('account')}</Text>
+            <Text style={styles.role}>Role: {role ?? '—'}</Text>
+            <TouchableOpacity style={styles.button} onPress={handleLogout}>
+              <Text style={styles.buttonText}>{t('logOut')}</Text>
+            </TouchableOpacity>
+            {onChangeBackendUrl != null && (
+              <TouchableOpacity
+                style={[styles.button, styles.buttonDanger]}
+                onPress={onChangeBackendUrl}
+              >
+                <Text style={styles.buttonText}>Change backend URL</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={[styles.section, halfCard]}>
+            <Text style={styles.sectionTitle}>{t('language')}</Text>
+            {canEditGeneralSettings ? (
+              <TouchableOpacity
+                style={styles.languageRow}
+                onPress={() => setLanguagePickerVisible(true)}
+                accessibilityLabel={t('language')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.languageValue}>{currentLocaleLabel}</Text>
+                <Text style={styles.rowHint}>Tap to change</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.languageRow}>
+                <Text style={styles.languageValue}>{currentLocaleLabel}</Text>
+              </View>
+            )}
+          </View>
+
+          {settings != null && (
+            <View style={[styles.section, fullCard]}>
+              <Text style={styles.sectionTitle}>{t('settings')}</Text>
+              {canEditGeneralSettings ? (
+                <>
+                  <Text style={styles.label}>Website name</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={editWebsiteName}
+                    onChangeText={setEditWebsiteName}
+                    maxLength={15}
+                    placeholder="Website name"
+                    placeholderTextColor="#888"
+                  />
+                  <View style={styles.toggleRow}>
+                    <Text style={styles.toggleLabel}>Auto-play video</Text>
+                    <TouchableOpacity
+                      style={[styles.toggleButton, editAutoPlayVideo && styles.toggleButtonActive]}
+                      onPress={() => setEditAutoPlayVideo(v => !v)}
+                      accessibilityLabel="Toggle auto-play video"
+                    >
+                      <Text
+                        style={[
+                          styles.toggleButtonText,
+                          editAutoPlayVideo && styles.toggleButtonTextActive,
+                        ]}
+                      >
+                        {editAutoPlayVideo ? 'On' : 'Off'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.label}>Theme</Text>
+                  <View style={styles.themeRow}>
+                    {(['light', 'dark', 'system'] as const).map(theme => (
+                      <TouchableOpacity
+                        key={theme}
+                        style={[
+                          styles.themeOption,
+                          editTheme === theme && styles.themeOptionActive,
+                        ]}
+                        onPress={() => setEditTheme(theme)}
+                      >
+                        <Text
+                          style={[
+                            styles.themeOptionText,
+                            editTheme === theme && styles.themeOptionTextActive,
+                          ]}
+                        >
+                          {theme}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              ) : (
+                <>
+                  {settings.websiteName != null && (
+                    <Text style={styles.row}>{settings.websiteName}</Text>
+                  )}
+                  {settings.theme != null && (
+                    <Text style={styles.row}>Theme: {settings.theme}</Text>
+                  )}
+                </>
+              )}
+
+              {canEditCloudflareSettings && (
+                <>
+                  <Text style={styles.subsectionTitle}>Cloudflare tunnel</Text>
+                  <View style={styles.toggleRow}>
+                    <Text style={styles.toggleLabel}>Tunnel enabled</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleButton,
+                        editCloudflaredTunnelEnabled && styles.toggleButtonActive,
+                      ]}
+                      onPress={() => setEditCloudflaredTunnelEnabled(v => !v)}
+                      accessibilityLabel="Toggle cloudflared tunnel"
+                    >
+                      <Text
+                        style={[
+                          styles.toggleButtonText,
+                          editCloudflaredTunnelEnabled && styles.toggleButtonTextActive,
+                        ]}
+                      >
+                        {editCloudflaredTunnelEnabled ? 'Enabled' : 'Disabled'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.label}>Cloudflared token</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={editCloudflaredToken}
+                    onChangeText={setEditCloudflaredToken}
+                    placeholder="Cloudflared token"
+                    placeholderTextColor="#888"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </>
+              )}
+
+              {canEditAnySettings && (
+                <>
+                  {updateMutation.isError && (
+                    <Text style={styles.inlineError}>
+                      {(updateMutation.error as { message?: string }).message}
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    style={[
+                      styles.saveButton,
+                      isTablet && styles.saveButtonTablet,
+                      !canSave && styles.saveButtonDisabled,
+                    ]}
+                    onPress={handleSave}
+                    disabled={!canSave}
+                    accessibilityLabel="Save settings"
+                  >
+                    <Text style={styles.saveButtonText}>
+                      {updateMutation.isPending ? 'Saving…' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
+
+          {version != null && (
+            <View style={[styles.section, halfCard]}>
+              <Text style={styles.sectionTitle}>{t('about')}</Text>
+              <Text style={styles.row}>Current: {version.currentVersion}</Text>
+              <Text style={styles.row}>Latest: {version.latestVersion}</Text>
+              {version.hasUpdate && version.releaseUrl && (
+                <TouchableOpacity
+                  style={styles.linkButton}
+                  onPress={() => Linking.openURL(version.releaseUrl)}
+                >
+                  <Text style={styles.linkText}>Open release</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
       </View>
 
       <Modal
@@ -305,143 +464,12 @@ export function SettingsScreen({ onLogout, onChangeBackendUrl }: SettingsScreenP
           </Pressable>
         </Pressable>
       </Modal>
-
-      {settings != null && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('settings')}</Text>
-          {canEditGeneralSettings ? (
-            <>
-              <Text style={styles.label}>Website name</Text>
-              <TextInput
-                style={styles.input}
-                value={editWebsiteName}
-                onChangeText={setEditWebsiteName}
-                maxLength={15}
-                placeholder="Website name"
-                placeholderTextColor="#888"
-              />
-              <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>Auto-play video</Text>
-                <TouchableOpacity
-                  style={[styles.toggleButton, editAutoPlayVideo && styles.toggleButtonActive]}
-                  onPress={() => setEditAutoPlayVideo(v => !v)}
-                  accessibilityLabel="Toggle auto-play video"
-                >
-                  <Text style={[styles.toggleButtonText, editAutoPlayVideo && styles.toggleButtonTextActive]}>
-                    {editAutoPlayVideo ? 'On' : 'Off'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.label}>Theme</Text>
-              <View style={styles.themeRow}>
-                {(['light', 'dark', 'system'] as const).map(theme => (
-                  <TouchableOpacity
-                    key={theme}
-                    style={[
-                      styles.themeOption,
-                      editTheme === theme && styles.themeOptionActive,
-                    ]}
-                    onPress={() => setEditTheme(theme)}
-                  >
-                    <Text
-                      style={[
-                        styles.themeOptionText,
-                        editTheme === theme && styles.themeOptionTextActive,
-                      ]}
-                    >
-                      {theme}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          ) : (
-            <>
-              {settings.websiteName != null && (
-                <Text style={styles.row}>{settings.websiteName}</Text>
-              )}
-              {settings.theme != null && (
-                <Text style={styles.row}>Theme: {settings.theme}</Text>
-              )}
-            </>
-          )}
-
-          {canEditCloudflareSettings && (
-            <>
-              <Text style={styles.subsectionTitle}>Cloudflare tunnel</Text>
-              <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>Tunnel enabled</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleButton,
-                    editCloudflaredTunnelEnabled && styles.toggleButtonActive,
-                  ]}
-                  onPress={() => setEditCloudflaredTunnelEnabled(v => !v)}
-                  accessibilityLabel="Toggle cloudflared tunnel"
-                >
-                  <Text
-                    style={[
-                      styles.toggleButtonText,
-                      editCloudflaredTunnelEnabled && styles.toggleButtonTextActive,
-                    ]}
-                  >
-                    {editCloudflaredTunnelEnabled ? 'Enabled' : 'Disabled'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.label}>Cloudflared token</Text>
-              <TextInput
-                style={styles.input}
-                value={editCloudflaredToken}
-                onChangeText={setEditCloudflaredToken}
-                placeholder="Cloudflared token"
-                placeholderTextColor="#888"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </>
-          )}
-
-          {canEditAnySettings && (
-            <>
-              {updateMutation.isError && (
-                <Text style={styles.inlineError}>
-                  {(updateMutation.error as { message?: string }).message}
-                </Text>
-              )}
-              <TouchableOpacity
-                style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
-                onPress={handleSave}
-                disabled={!canSave}
-                accessibilityLabel="Save settings"
-              >
-                <Text style={styles.saveButtonText}>
-                  {updateMutation.isPending ? 'Saving…' : 'Save'}
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      )}
-
-      {version != null && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('about')}</Text>
-          <Text style={styles.row}>Current: {version.currentVersion}</Text>
-          <Text style={styles.row}>Latest: {version.latestVersion}</Text>
-          {version.hasUpdate && version.releaseUrl && (
-            <TouchableOpacity
-              style={styles.linkButton}
-              onPress={() => Linking.openURL(version.releaseUrl)}
-            >
-              <Text style={styles.linkText}>Open release</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
     </ScrollView>
   );
 }
+
+const TABLET_MAX_WIDTH = 960;
+const TABLET_GAP = 16;
 
 const styles = StyleSheet.create({
   container: {
@@ -451,6 +479,17 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 32,
+  },
+  contentTablet: {
+    padding: 24,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  inner: {
+    width: '100%',
+  },
+  innerTablet: {
+    maxWidth: TABLET_MAX_WIDTH,
   },
   centered: {
     flex: 1,
@@ -476,8 +515,30 @@ const styles = StyleSheet.create({
     color: '#0a7ea4',
     fontWeight: '600',
   },
+  sectionsGrid: {
+    // phone: stacked, default vertical layout
+  },
+  sectionsGridTablet: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: TABLET_GAP,
+  },
   section: {
-    marginBottom: 24,
+    backgroundColor: '#222',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  sectionHalf: {
+    flexBasis: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 280,
+    marginBottom: 0,
+  },
+  sectionFull: {
+    flexBasis: '100%',
+    marginBottom: 0,
   },
   sectionTitle: {
     color: '#fff',
@@ -497,6 +558,11 @@ const styles = StyleSheet.create({
   },
   languageRow: {
     marginBottom: 4,
+  },
+  languageValue: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
   },
   modalBackdrop: {
     flex: 1,
@@ -556,7 +622,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     marginBottom: 8,
-    marginTop: 8,
+    marginTop: 12,
   },
   input: {
     backgroundColor: '#2a2a2a',
@@ -569,13 +635,15 @@ const styles = StyleSheet.create({
   themeRow: {
     flexDirection: 'row',
     marginBottom: 16,
+    gap: 8,
   },
   themeOption: {
-    paddingVertical: 10,
+    flex: 1,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    marginRight: 8,
     backgroundColor: '#333',
     borderRadius: 8,
+    alignItems: 'center',
   },
   themeOptionActive: {
     backgroundColor: '#0a7ea4',
@@ -592,18 +660,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   toggleLabel: {
     color: '#ccc',
     fontSize: 14,
     marginRight: 12,
+    flex: 1,
   },
   toggleButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     borderRadius: 8,
     backgroundColor: '#333',
+    minWidth: 90,
+    alignItems: 'center',
   },
   toggleButtonActive: {
     backgroundColor: '#0a7ea4',
@@ -623,9 +694,15 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: '#0a7ea4',
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  saveButtonTablet: {
     alignSelf: 'flex-start',
+    minWidth: 160,
   },
   saveButtonDisabled: {
     backgroundColor: '#444',
@@ -634,6 +711,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#fff',
     fontWeight: '600',
+    fontSize: 15,
   },
   role: {
     color: '#aaa',
@@ -641,9 +719,10 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#333',
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 8,
-    alignSelf: 'flex-start',
+    alignItems: 'center',
     marginTop: 8,
   },
   buttonDanger: {
