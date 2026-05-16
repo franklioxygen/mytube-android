@@ -20,7 +20,6 @@ interface MobileMenuProps {
 }
 
 const MENU_ITEMS: { label: string; screen: string; params?: object }[] = [
-  { label: 'Manage', screen: 'Manage' },
   { label: 'Downloads', screen: 'Downloads' },
   { label: 'Subscriptions', screen: 'Subscriptions' },
   { label: 'Settings', screen: 'Settings' },

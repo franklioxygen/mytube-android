@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
   type AppStateStatus,
-  ScrollView,
+  SectionList,
   RefreshControl,
   View,
   Text,
@@ -53,6 +53,12 @@ function getItemKey(item: DownloadInfo, index: number): string {
 function runAsync(task: Promise<unknown>): void {
   task.catch(() => {});
 }
+
+const PAGE_SIZE = 20;
+
+type QueueKind = 'active' | 'queued';
+type QueueItem = DownloadInfo & { _kind: QueueKind };
+type Section = { title: 'Queue' | 'History'; data: DownloadInfo[]; total: number };
 
 export function DownloadsScreen() {
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
@@ -149,9 +155,52 @@ export function DownloadsScreen() {
     runAsync(refetchHistory());
   }, [canPoll, refetchStatus, refetchHistory]);
 
-  const history = historyQuery.data ?? [];
+  const history = useMemo(() => historyQuery.data ?? [], [historyQuery.data]);
   const refreshing = statusQuery.isRefetching || historyQuery.isRefetching;
   const loading = statusQuery.isLoading && historyQuery.isLoading;
+
+  const queueItems = useMemo<QueueItem[]>(
+    () => [
+      ...activeDownloads.map(item => ({ ...item, _kind: 'active' as const })),
+      ...queuedDownloads.map(item => ({ ...item, _kind: 'queued' as const })),
+    ],
+    [activeDownloads, queuedDownloads]
+  );
+
+  const [queueVisible, setQueueVisible] = useState(PAGE_SIZE);
+  const [historyVisible, setHistoryVisible] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    setQueueVisible(prev => Math.min(Math.max(prev, PAGE_SIZE), Math.max(PAGE_SIZE, queueItems.length)));
+  }, [queueItems.length]);
+
+  useEffect(() => {
+    setHistoryVisible(prev => Math.min(Math.max(prev, PAGE_SIZE), Math.max(PAGE_SIZE, history.length)));
+  }, [history.length]);
+
+  const sections = useMemo<Section[]>(
+    () => [
+      {
+        title: 'Queue',
+        data: queueItems.slice(0, queueVisible),
+        total: queueItems.length,
+      },
+      {
+        title: 'History',
+        data: history.slice(0, historyVisible),
+        total: history.length,
+      },
+    ],
+    [queueItems, queueVisible, history, historyVisible]
+  );
+
+  const loadMore = useCallback(() => {
+    if (queueVisible < queueItems.length) {
+      setQueueVisible(prev => Math.min(prev + PAGE_SIZE, queueItems.length));
+    } else if (historyVisible < history.length) {
+      setHistoryVisible(prev => Math.min(prev + PAGE_SIZE, history.length));
+    }
+  }, [queueVisible, queueItems.length, historyVisible, history.length]);
 
   const errorText = useMemo(() => {
     const statusError = statusQuery.error as AppError | null;
@@ -176,68 +225,84 @@ export function DownloadsScreen() {
   }
 
   return (
-    <ScrollView
+    <SectionList<DownloadInfo, Section>
+      sections={sections}
       style={styles.container}
       contentContainerStyle={styles.content}
+      keyExtractor={(item, index) => getItemKey(item, index)}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor="#0a7ea4" />
       }
-    >
-      {errorText != null && (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{errorText}</Text>
-        </View>
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Queue</Text>
-        <Text style={styles.sectionMeta}>
-          Active: {activeDownloads.length} | Queued: {queuedDownloads.length}
-        </Text>
-        {activeDownloads.length === 0 && queuedDownloads.length === 0 ? (
-          <Text style={styles.emptyText}>No active or queued downloads.</Text>
-        ) : (
-          <>
-            {activeDownloads.map((item, index) => {
-              const progress = formatProgress(item.progress);
-              return (
-                <View key={getItemKey(item, index)} style={styles.card}>
-                  <Text style={styles.cardTitle}>{getDownloadTitle(item)}</Text>
-                  <Text style={styles.cardMeta}>Status: active</Text>
-                  {progress != null && <Text style={styles.cardMeta}>Progress: {progress}</Text>}
-                  {item.speed != null && <Text style={styles.cardMeta}>Speed: {item.speed}</Text>}
-                </View>
-              );
-            })}
-            {queuedDownloads.map((item, index) => (
-              <View key={getItemKey(item, index)} style={styles.card}>
-                <Text style={styles.cardTitle}>{getDownloadTitle(item)}</Text>
-                <Text style={styles.cardMeta}>Status: queued</Text>
-              </View>
-            ))}
-          </>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>History</Text>
-        {history.length === 0 ? (
-          <Text style={styles.emptyText}>No download history yet.</Text>
-        ) : (
-          history.map((item, index) => {
-            const at = formatTimestamp(item.updatedAt ?? item.timestamp ?? item.createdAt);
-            return (
-              <View key={getItemKey(item, index)} style={styles.card}>
-                <Text style={styles.cardTitle}>{getDownloadTitle(item)}</Text>
-                <Text style={styles.cardMeta}>Status: {item.status ?? 'unknown'}</Text>
-                {at != null && <Text style={styles.cardMeta}>Updated: {at}</Text>}
-                {item.error != null && <Text style={styles.cardError}>{item.error}</Text>}
-              </View>
-            );
-          })
-        )}
-      </View>
-    </ScrollView>
+      ListHeaderComponent={
+        errorText != null ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{errorText}</Text>
+          </View>
+        ) : null
+      }
+      renderSectionHeader={({ section }) => {
+        const s = section as Section;
+        return (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{s.title}</Text>
+            {s.title === 'Queue' && (
+              <Text style={styles.sectionMeta}>
+                Active: {activeDownloads.length} | Queued: {queuedDownloads.length}
+              </Text>
+            )}
+            {s.total === 0 && (
+              <Text style={styles.emptyText}>
+                {s.title === 'Queue' ? 'No active or queued downloads.' : 'No download history yet.'}
+              </Text>
+            )}
+          </View>
+        );
+      }}
+      renderSectionFooter={({ section }) => {
+        const s = section as Section;
+        const shown = s.data.length;
+        if (s.total > shown) {
+          return (
+            <Text style={styles.sectionFooter}>
+              Showing {shown} of {s.total}…
+            </Text>
+          );
+        }
+        return null;
+      }}
+      renderItem={({ item, section }) => {
+        const s = section as Section;
+        if (s.title === 'Queue') {
+          const queueItem = item as QueueItem;
+          const progress = formatProgress(queueItem.progress);
+          return (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{getDownloadTitle(queueItem)}</Text>
+              <Text style={styles.cardMeta}>Status: {queueItem._kind}</Text>
+              {queueItem._kind === 'active' && progress != null && (
+                <Text style={styles.cardMeta}>Progress: {progress}</Text>
+              )}
+              {queueItem._kind === 'active' && queueItem.speed != null && (
+                <Text style={styles.cardMeta}>Speed: {queueItem.speed}</Text>
+              )}
+            </View>
+          );
+        }
+        const at = formatTimestamp(item.updatedAt ?? item.timestamp ?? item.createdAt);
+        return (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{getDownloadTitle(item)}</Text>
+            <Text style={styles.cardMeta}>Status: {item.status ?? 'unknown'}</Text>
+            {at != null && <Text style={styles.cardMeta}>Updated: {at}</Text>}
+            {item.error != null && <Text style={styles.cardError}>{item.error}</Text>}
+          </View>
+        );
+      }}
+      stickySectionHeadersEnabled={false}
+      onEndReached={loadMore}
+      onEndReachedThreshold={0.4}
+      initialNumToRender={PAGE_SIZE}
+    />
   );
 }
 
@@ -261,8 +326,16 @@ const styles = StyleSheet.create({
     color: '#aaa',
     marginTop: 12,
   },
-  section: {
-    marginBottom: 20,
+  sectionHeader: {
+    backgroundColor: '#1a1a1a',
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  sectionFooter: {
+    color: '#888',
+    fontSize: 12,
+    paddingVertical: 8,
+    textAlign: 'center',
   },
   sectionTitle: {
     color: '#fff',

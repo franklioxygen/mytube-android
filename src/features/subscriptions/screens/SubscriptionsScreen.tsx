@@ -50,8 +50,7 @@ function getSubscriptionLabel(item: Subscription): string {
 }
 
 function getTaskLabel(item: SubscriptionTask): string {
-  const id = item.subscriptionId ?? item.id;
-  return `Task ${id}`;
+  return item.playlistName ?? item.author ?? `Task ${item.id}`;
 }
 
 function runAsync(task: Promise<unknown>): void {

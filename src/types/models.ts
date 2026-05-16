@@ -104,6 +104,10 @@ export type SubscriptionTaskStatus =
 export interface SubscriptionTask {
   id: string;
   subscriptionId?: string;
+  author?: string;
+  authorUrl?: string;
+  platform?: string;
+  playlistName?: string;
   status?: SubscriptionTaskStatus;
   progress?: number;
   failedCount?: number;
