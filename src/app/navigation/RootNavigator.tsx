@@ -112,16 +112,35 @@ function ManageScreenWrapper({
   );
 }
 
+const SettingsScreenWrapperContext = React.createContext<{
+  onChangeBackendUrl?: () => void;
+}>({});
+
+function SettingsScreenWrapper() {
+  const { onChangeBackendUrl } = React.useContext(SettingsScreenWrapperContext);
+  return (
+    <SettingsScreen
+      onLogout={() => {}}
+      onChangeBackendUrl={onChangeBackendUrl}
+    />
+  );
+}
+
 function MainStack({ onRequestChangeBackendUrl }: { onRequestChangeBackendUrl?: () => void }) {
   const { t } = useTranslation();
+  const settingsContextValue = React.useMemo(
+    () => ({ onChangeBackendUrl: onRequestChangeBackendUrl }),
+    [onRequestChangeBackendUrl]
+  );
   return (
-    <Stack.Navigator
-      screenOptions={{
-        header: renderTopBar,
-        headerStyle: { backgroundColor: '#1a1a1a' },
-        headerTintColor: '#fff',
-      }}
-    >
+    <SettingsScreenWrapperContext.Provider value={settingsContextValue}>
+      <Stack.Navigator
+        screenOptions={{
+          header: renderTopBar,
+          headerStyle: { backgroundColor: '#1a1a1a' },
+          headerTintColor: '#fff',
+        }}
+      >
       <Stack.Screen
         name="Home"
         component={HomeScreenWrapper}
@@ -144,12 +163,7 @@ function MainStack({ onRequestChangeBackendUrl }: { onRequestChangeBackendUrl?: 
       />
       <Stack.Screen
         name="Settings"
-        component={() => (
-          <SettingsScreen
-            onLogout={() => {}}
-            onChangeBackendUrl={onRequestChangeBackendUrl}
-          />
-        )}
+        component={SettingsScreenWrapper}
         options={{ title: t('settings') }}
       />
       <Stack.Screen
@@ -182,11 +196,13 @@ function MainStack({ onRequestChangeBackendUrl }: { onRequestChangeBackendUrl?: 
         component={InstructionScreen}
         options={{ title: t('instruction') }}
       />
-    </Stack.Navigator>
+      </Stack.Navigator>
+    </SettingsScreenWrapperContext.Provider>
   );
 }
 
 export function RootNavigator({ onRequestChangeBackendUrl }: RootNavigatorProps) {
+  const { t } = useTranslation();
   const { loginRequired, loading, hasValidSession, refreshAuthConfig } = useAuth();
   const showLogin = loginRequired && !hasValidSession;
   const [showSlowStartupHelp, setShowSlowStartupHelp] = React.useState(false);
@@ -205,24 +221,22 @@ export function RootNavigator({ onRequestChangeBackendUrl }: RootNavigatorProps)
   if (loading) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.loadingText}>Loading…</Text>
+        <Text style={styles.loadingText}>{t('loading')}</Text>
         {showSlowStartupHelp && (
           <>
-            <Text style={styles.helpText}>
-              Startup is taking longer than expected. Check backend URL/server and retry.
-            </Text>
+            <Text style={styles.helpText}>{t('startupSlow')}</Text>
             <TouchableOpacity
               style={[styles.actionButton, styles.retryButton]}
-              onPress={() => { void refreshAuthConfig(); }}
+              onPress={() => { refreshAuthConfig().catch(() => {}); }}
             >
-              <Text style={styles.actionButtonText}>Retry startup</Text>
+              <Text style={styles.actionButtonText}>{t('retryStartup')}</Text>
             </TouchableOpacity>
             {onRequestChangeBackendUrl != null && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.secondaryButton]}
                 onPress={onRequestChangeBackendUrl}
               >
-                <Text style={styles.actionButtonText}>Change backend URL</Text>
+                <Text style={styles.actionButtonText}>{t('changeBackendUrl')}</Text>
               </TouchableOpacity>
             )}
           </>

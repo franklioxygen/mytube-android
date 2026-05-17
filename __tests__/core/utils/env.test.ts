@@ -37,6 +37,7 @@ function loadEnvModule(options: LoadEnvOptions) {
           'http://10.0.2.2:8081/index.bundle?platform=android',
       },
     },
+    Platform: { OS: 'android', select: (obj: Record<string, unknown>) => obj.android },
   }));
 
   return require('../../../src/core/utils/env') as typeof import('../../../src/core/utils/env');

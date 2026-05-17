@@ -13,6 +13,7 @@ export {
   SettingsRepository,
   settingsQueryKeys,
 } from './settingsRepository';
+export { useSettingsQuery } from './useSettingsQuery';
 export { CloudRepository } from './cloudRepository';
 export {
   DownloadRepository,

@@ -3,11 +3,10 @@
  */
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { useAuth } from '../../core/auth/AuthContext';
-import { SettingsRepository, settingsQueryKeys } from '../../core/repositories';
+import { useSettingsQuery } from '../../core/repositories';
 
 const enTranslation = {
   appName: 'MyTube',
@@ -29,6 +28,41 @@ const enTranslation = {
   language: 'Language',
   languageEn: 'English',
   languageEs: 'Español',
+  languageZh: '中文',
+
+  tabAllVideos: 'ALL VIDEOS',
+  tabCollections: 'COLLECTIONS',
+  tabHistory: 'HISTORY',
+
+  emptyCollections: 'No collections yet.',
+  emptyHistory: 'No history yet.',
+  emptyDownloadQueue: 'No active or queued downloads.',
+  emptyDownloadHistory: 'No download history yet.',
+  emptyVideos: 'No videos found.',
+
+  modalAddToCollection: 'Add to collection',
+  modalPlaybackSpeed: 'Playback speed',
+  modalDeleteVideoTitle: 'Delete video?',
+  modalDeleteCollectionTitle: 'Delete collection?',
+  modalTagsTitle: 'Edit tags',
+
+  actionSave: 'Save',
+  actionCancel: 'Cancel',
+  actionDelete: 'Delete',
+  actionRetry: 'Retry',
+  actionBack: 'Back',
+
+  sectionQueue: 'Queue',
+  sectionHistory: 'History',
+  loadingDownloads: 'Loading downloads…',
+  searchVideosPlaceholder: 'Search videos',
+  menu: 'Menu',
+  goToHome: 'Go to home',
+
+  startupSlow:
+    'Startup is taking longer than expected. Check backend URL/server and retry.',
+  retryStartup: 'Retry startup',
+  changeBackendUrl: 'Change backend URL',
 };
 
 const esTranslation = {
@@ -51,15 +85,107 @@ const esTranslation = {
   language: 'Idioma',
   languageEn: 'English',
   languageEs: 'Español',
+  languageZh: '中文',
+
+  tabAllVideos: 'TODOS LOS VÍDEOS',
+  tabCollections: 'COLECCIONES',
+  tabHistory: 'HISTORIAL',
+
+  emptyCollections: 'Aún no hay colecciones.',
+  emptyHistory: 'Aún no hay historial.',
+  emptyDownloadQueue: 'No hay descargas activas ni en cola.',
+  emptyDownloadHistory: 'Aún no hay historial de descargas.',
+  emptyVideos: 'No se encontraron vídeos.',
+
+  modalAddToCollection: 'Añadir a colección',
+  modalPlaybackSpeed: 'Velocidad de reproducción',
+  modalDeleteVideoTitle: '¿Eliminar vídeo?',
+  modalDeleteCollectionTitle: '¿Eliminar colección?',
+  modalTagsTitle: 'Editar etiquetas',
+
+  actionSave: 'Guardar',
+  actionCancel: 'Cancelar',
+  actionDelete: 'Eliminar',
+  actionRetry: 'Reintentar',
+  actionBack: 'Atrás',
+
+  sectionQueue: 'Cola',
+  sectionHistory: 'Historial',
+  loadingDownloads: 'Cargando descargas…',
+  searchVideosPlaceholder: 'Buscar vídeos',
+  menu: 'Menú',
+  goToHome: 'Ir al inicio',
+
+  startupSlow:
+    'El inicio está tardando más de lo esperado. Verifica la URL del servidor y reintenta.',
+  retryStartup: 'Reintentar inicio',
+  changeBackendUrl: 'Cambiar URL del servidor',
+};
+
+const zhTranslation = {
+  appName: 'MyTube',
+  home: '视频',
+  downloads: '下载',
+  subscriptions: '订阅',
+  collections: '收藏',
+  settings: '设置',
+  video: '视频',
+  collection: '收藏夹',
+  author: '作者',
+  manage: '管理',
+  search: '搜索',
+  instruction: '使用说明',
+  account: '账户',
+  about: '关于',
+  logOut: '退出登录',
+  loading: '加载中…',
+  language: '语言',
+  languageEn: 'English',
+  languageEs: 'Español',
+  languageZh: '中文',
+
+  tabAllVideos: '所有视频',
+  tabCollections: '收藏夹',
+  tabHistory: '历史',
+
+  emptyCollections: '尚无收藏。',
+  emptyHistory: '尚无历史记录。',
+  emptyDownloadQueue: '没有进行中或排队的下载。',
+  emptyDownloadHistory: '尚无下载历史。',
+  emptyVideos: '未找到视频。',
+
+  modalAddToCollection: '加入收藏夹',
+  modalPlaybackSpeed: '播放速度',
+  modalDeleteVideoTitle: '删除该视频?',
+  modalDeleteCollectionTitle: '删除该收藏夹?',
+  modalTagsTitle: '编辑标签',
+
+  actionSave: '保存',
+  actionCancel: '取消',
+  actionDelete: '删除',
+  actionRetry: '重试',
+  actionBack: '返回',
+
+  sectionQueue: '队列',
+  sectionHistory: '历史',
+  loadingDownloads: '正在加载下载…',
+  searchVideosPlaceholder: '搜索视频',
+  menu: '菜单',
+  goToHome: '回到首页',
+
+  startupSlow: '启动时间比预期更长。请检查服务器地址并重试。',
+  retryStartup: '重试启动',
+  changeBackendUrl: '更改服务器地址',
 };
 
 const resources = {
   en: { translation: enTranslation },
   es: { translation: esTranslation },
+  zh: { translation: zhTranslation },
 };
 
 /** Locale codes supported by the language picker. */
-export const SUPPORTED_LOCALE_CODES = ['en', 'es'] as const;
+export const SUPPORTED_LOCALE_CODES = ['en', 'es', 'zh'] as const;
 export type SupportedLocaleCode = (typeof SUPPORTED_LOCALE_CODES)[number];
 const DEFAULT_LOCALE_CODE: SupportedLocaleCode = 'en';
 
@@ -80,14 +206,17 @@ export function normalizeLocaleCode(
 export const LOCALE_LABEL_KEYS: Record<(typeof SUPPORTED_LOCALE_CODES)[number], string> = {
   en: 'languageEn',
   es: 'languageEs',
+  zh: 'languageZh',
 };
 
-i18n.use(initReactI18next).init({
-  resources,
-  lng: 'en',
-  fallbackLng: 'en',
-  interpolation: { escapeValue: false },
-});
+if (!i18n.isInitialized) {
+  i18n.use(initReactI18next).init({
+    resources,
+    lng: 'en',
+    fallbackLng: 'en',
+    interpolation: { escapeValue: false },
+  });
+}
 
 interface LanguageContextValue {
   language: string;
@@ -103,13 +232,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   );
 
   const canLoadSettingsLanguage = !loading && (!loginRequired || hasValidSession);
-  const settingsQuery = useQuery({
-    queryKey: settingsQueryKeys.settings,
-    queryFn: () => SettingsRepository.getSettings(),
-    enabled: canLoadSettingsLanguage,
-    retry: false,
-    staleTime: 60 * 1000,
-  });
+  const settingsQuery = useSettingsQuery({ enabled: canLoadSettingsLanguage });
 
   const setLanguage = useCallback((lang: string) => {
     const nextLanguage = normalizeLocaleCode(lang, normalizeLocaleCode(i18n.language));

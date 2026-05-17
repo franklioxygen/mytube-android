@@ -27,6 +27,7 @@ import Video, { TextTrackType, SelectedTrackType } from 'react-native-video';
 import type { VideoRef, TextTracks, OnLoadData } from 'react-native-video';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   getVideo,
   getVideoComments,
@@ -241,6 +242,7 @@ function getCloudSignedUrlValue(response: unknown): string | null {
 }
 
 export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress }: VideoDetailScreenProps) {
+  const { t } = useTranslation();
   const { width, height } = useWindowDimensions();
   const shortEdge = Math.min(width, height);
   const isTabletLandscape = shortEdge >= 600 && width > height;
@@ -321,7 +323,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
   });
   const autoPlay = Boolean(settings?.autoPlayVideo);
   const availableTags: string[] = useMemo(
-    () => (Array.isArray((settings as any)?.tags) ? (settings as any).tags : []),
+    () => (Array.isArray(settings?.tags) ? settings.tags : []),
     [settings]
   );
 
@@ -608,11 +610,6 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
     }
   }, []);
 
-  const handleBackPress = useCallback(() => {
-    runAsync(flushProgressWrite(true));
-    onBack();
-  }, [flushProgressWrite, onBack]);
-
   const handleOpenAuthorChannel = useCallback(async () => {
     if (!authorChannelUrl) return;
     try {
@@ -718,7 +715,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
 
   const handleRemoveTag = useCallback(
     (tag: string) => {
-      const newTags = localTags.filter(t => t !== tag);
+      const newTags = localTags.filter(existing => existing !== tag);
       runAsync(handleTagsUpdate(newTags));
     },
     [localTags, handleTagsUpdate]
@@ -800,7 +797,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
       <View style={styles.centered}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{t('actionBack')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -1067,7 +1064,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               onPress={() => setDeleteModalVisible(true)}
               accessibilityLabel="Delete"
             >
-              <MaterialIcons name="delete" size={18} color="#f66" />
+              <MaterialIcons name="delete" size={18} color="#aaa" />
             </TouchableOpacity>
           )}
         </View>
@@ -1324,7 +1321,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
         >
           <Pressable style={styles.modalBox} onPress={e => e.stopPropagation()}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add to collection</Text>
+              <Text style={styles.modalTitle}>{t('modalAddToCollection')}</Text>
               <TouchableOpacity onPress={() => setAddToCollectionModalVisible(false)}>
                 <MaterialIcons name="close" size={22} color="#aaa" />
               </TouchableOpacity>
@@ -1352,7 +1349,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
-                <Text style={styles.modalEmpty}>No collections yet.</Text>
+                <Text style={styles.modalEmpty}>{t('emptyCollections')}</Text>
               }
             />
           </Pressable>
@@ -1368,7 +1365,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
       >
         <Pressable style={styles.speedOverlay} onPress={() => setSpeedModalVisible(false)}>
           <Pressable style={styles.speedModal} onPress={e => e.stopPropagation()}>
-            <Text style={styles.speedModalTitle}>Playback speed</Text>
+            <Text style={styles.speedModalTitle}>{t('modalPlaybackSpeed')}</Text>
             {[0.5, 0.75, 1, 1.25, 1.5, 2, 3].map(speed => (
               <TouchableOpacity
                 key={speed}
@@ -1396,7 +1393,7 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
       >
         <Pressable style={styles.deleteOverlay} onPress={() => setDeleteModalVisible(false)}>
           <Pressable style={styles.deleteModal} onPress={e => e.stopPropagation()}>
-            <Text style={styles.deleteModalTitle}>Delete video?</Text>
+            <Text style={styles.deleteModalTitle}>{t('modalDeleteVideoTitle')}</Text>
             <Text style={styles.deleteModalBody}>
               This will permanently delete "{video.title}". This action cannot be undone.
             </Text>
@@ -1478,13 +1475,13 @@ export function VideoDetailScreen({ videoId, onBack, onAuthorPress, onVideoPress
               </TouchableOpacity>
             </View>
 
-            {allTagOptions.filter(t => !localTags.includes(t)).length > 0 && (
+            {allTagOptions.filter(option => !localTags.includes(option)).length > 0 && (
               <View style={styles.tagsModalSuggestSection}>
                 <Text style={styles.tagsModalSectionLabel}>Suggestions</Text>
                 <View style={styles.tagsChips}>
                   {allTagOptions
-                    .filter(t => !localTags.includes(t))
-                    .filter(t => !tagInput || t.toLowerCase().includes(tagInput.toLowerCase()))
+                    .filter(option => !localTags.includes(option))
+                    .filter(option => !tagInput || option.toLowerCase().includes(tagInput.toLowerCase()))
                     .map(tag => (
                       <TouchableOpacity
                         key={tag}

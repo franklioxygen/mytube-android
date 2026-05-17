@@ -46,8 +46,15 @@ echo "✅ New version: $NEW_VERSION"
 echo "🔄 Updating version in android/app/build.gradle..."
 CURRENT_VERSION_CODE=$(grep -o 'versionCode [0-9]*' android/app/build.gradle | awk '{print $2}')
 NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
-sed -i '' "s/versionCode $CURRENT_VERSION_CODE/versionCode $NEW_VERSION_CODE/" android/app/build.gradle
-sed -i '' "s/versionName \".*\"/versionName \"$NEW_VERSION\"/" android/app/build.gradle
+
+# Portable sed -i: BSD (macOS) requires an empty backup-extension arg; GNU does not.
+if [[ "$OSTYPE" == darwin* ]]; then
+  SED_INPLACE=(sed -i '')
+else
+  SED_INPLACE=(sed -i)
+fi
+"${SED_INPLACE[@]}" "s/versionCode $CURRENT_VERSION_CODE/versionCode $NEW_VERSION_CODE/" android/app/build.gradle
+"${SED_INPLACE[@]}" "s/versionName \".*\"/versionName \"$NEW_VERSION\"/" android/app/build.gradle
 echo "✅ versionCode: $CURRENT_VERSION_CODE → $NEW_VERSION_CODE, versionName: $NEW_VERSION"
 
 # Commit and Tag

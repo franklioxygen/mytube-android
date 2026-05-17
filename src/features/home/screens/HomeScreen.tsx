@@ -17,6 +17,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {
   VideoRepository,
@@ -415,6 +416,7 @@ function HistoryTab({
 
 export function HomeScreen({ onVideoPress }: HomeScreenProps) {
   const { role } = useAuth();
+  const { t } = useTranslation();
   const { width, height } = useWindowDimensions();
   const numColumns = getVideoCardColumns(width, height);
   const isGrid = numColumns > 1;
@@ -549,7 +551,11 @@ export function HomeScreen({ onVideoPress }: HomeScreenProps) {
                 )
               ) : (
                 <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                  {tab === 'videos' ? 'ALL VIDEOS' : tab === 'collections' ? 'COLLECTIONS' : 'HISTORY'}
+                  {tab === 'videos'
+                    ? t('tabAllVideos')
+                    : tab === 'collections'
+                    ? t('tabCollections')
+                    : t('tabHistory')}
                 </Text>
               )}
             </TouchableOpacity>

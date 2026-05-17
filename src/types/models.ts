@@ -184,6 +184,7 @@ export interface Settings {
   cloudflaredTunnelEnabled?: boolean;
   cloudflaredToken?: string;
   autoPlayVideo?: boolean;
+  tags?: string[];
   [key: string]: unknown;
 }
 

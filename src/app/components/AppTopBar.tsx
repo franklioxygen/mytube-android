@@ -14,24 +14,22 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import type { MainStackParamList } from '../navigation/RootNavigator';
 import { MobileMenu } from './MobileMenu';
-import { SettingsRepository, settingsQueryKeys } from '../../core/repositories';
+import { useSettingsQuery } from '../../core/repositories';
 import { useAuth } from '../../core/auth/AuthContext';
 
 export function AppTopBar() {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
   const [inputText, setInputText] = useState('');
   const { passwordEnabled } = useAuth();
 
-  const settingsQuery = useQuery({
-    queryKey: settingsQueryKeys.settings,
-    queryFn: () => SettingsRepository.getSettings(),
-  });
+  const settingsQuery = useSettingsQuery();
 
   const websiteName = useMemo(() => {
     const fromSettings = settingsQuery.data?.websiteName?.trim();
@@ -61,7 +59,7 @@ export function AppTopBar() {
         style={styles.logoWrap}
         onPress={handleGoHome}
         accessibilityRole="button"
-        accessibilityLabel="Go to home"
+        accessibilityLabel={t('goToHome')}
       >
         <Image
           source={require('../../assets/logo.png')}
@@ -82,7 +80,7 @@ export function AppTopBar() {
 
       <TextInput
         style={styles.input}
-        placeholder="Search videos"
+        placeholder={t('searchVideosPlaceholder')}
         placeholderTextColor="#888"
         value={inputText}
         onChangeText={setInputText}
@@ -90,7 +88,11 @@ export function AppTopBar() {
         returnKeyType="search"
       />
 
-      <TouchableOpacity style={styles.menuButton} onPress={openMenu} accessibilityLabel="Menu">
+      <TouchableOpacity
+        style={styles.menuButton}
+        onPress={openMenu}
+        accessibilityLabel={t('menu')}
+      >
         <Text style={styles.menuIcon}>☰</Text>
       </TouchableOpacity>
       <MobileMenu

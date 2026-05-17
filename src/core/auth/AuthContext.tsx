@@ -52,7 +52,12 @@ interface AuthContextValue extends AuthState {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function isLoginSuccess(r: LoginResponse): r is { success: true; role: 'admin' | 'visitor' } {
-  return r && (r as { success?: boolean }).success === true;
+  if (r == null || typeof r !== 'object') return false;
+  const candidate = r as { success?: unknown; role?: unknown };
+  return (
+    candidate.success === true &&
+    (candidate.role === 'admin' || candidate.role === 'visitor')
+  );
 }
 
 function loginFailureErrorCode(body: { statusCode?: number }): AppError['code'] {

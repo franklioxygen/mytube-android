@@ -4,19 +4,31 @@
 
 import { apiGet, apiPatch } from '../client';
 import { buildInFlightKey } from '../inFlight';
+import { SettingsSchema, parseWithSchema } from '../schemas';
 import type { Settings, SystemVersion } from '../../../types';
 
-export function getSettings(): Promise<Settings> {
-  return apiGet<Settings>('/settings');
+export async function getSettings(): Promise<Settings> {
+  const raw = await apiGet<Settings>('/settings');
+  return parseWithSchema(SettingsSchema, raw, 'getSettings') as Settings;
 }
 
-export function updateSettings(payload: Partial<Settings>): Promise<{ success: boolean; settings: Settings }> {
+export async function updateSettings(
+  payload: Partial<Settings>
+): Promise<{ success: boolean; settings: Settings }> {
   const path = '/settings';
-  return apiPatch<{ success: boolean; settings: Settings }>(
+  const raw = await apiPatch<{ success: boolean; settings: Settings }>(
     path,
     payload,
     buildInFlightKey('PATCH', path)
   );
+  return {
+    success: raw.success,
+    settings: parseWithSchema(
+      SettingsSchema,
+      raw.settings,
+      'updateSettings'
+    ) as Settings,
+  };
 }
 
 export function getSystemVersion(): Promise<SystemVersion> {

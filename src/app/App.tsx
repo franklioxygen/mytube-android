@@ -6,7 +6,7 @@
 import React from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppProviders } from './providers';
+import { AppProviders, queryClient } from './providers';
 import { RootNavigator } from './navigation/RootNavigator';
 import { API_BASE_URL } from '../core/utils/env';
 import {
@@ -14,6 +14,7 @@ import {
   setStoredBackendApiUrl,
 } from '../core/config/backendUrlStorage';
 import { setRuntimeApiBaseUrl } from '../core/api/runtimeBaseUrl';
+import { resetBackend } from '../core/config/resetBackend';
 import { BackendUrlSetupScreen } from '../features/bootstrap/screens/BackendUrlSetupScreen';
 
 const bootstrappedBackendUrl = getStoredBackendApiUrl();
@@ -37,8 +38,7 @@ export default function App() {
   }, []);
 
   const handleChangeBackendUrl = React.useCallback(() => {
-    setStoredBackendApiUrl(null);
-    setRuntimeApiBaseUrl(API_BASE_URL);
+    resetBackend(queryClient);
     setBackendApiUrl(null);
     // suggestedUrl keeps the last entered value so the user can edit it
   }, []);

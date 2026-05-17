@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import type { AppError } from '../../../core/api/client';
 import { DownloadRepository, downloadQueryKeys } from '../../../core/repositories';
 import {
@@ -58,9 +59,16 @@ const PAGE_SIZE = 20;
 
 type QueueKind = 'active' | 'queued';
 type QueueItem = DownloadInfo & { _kind: QueueKind };
-type Section = { title: 'Queue' | 'History'; data: DownloadInfo[]; total: number };
+type SectionKind = 'queue' | 'history';
+type Section = {
+  kind: SectionKind;
+  title: string;
+  data: DownloadInfo[];
+  total: number;
+};
 
 export function DownloadsScreen() {
+  const { t } = useTranslation();
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const previousAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   const isFocused = useIsFocused();
@@ -100,8 +108,14 @@ export function DownloadsScreen() {
     retryDelay: getPollingRetryDelayMs,
   });
 
-  const activeDownloads = statusQuery.data?.activeDownloads ?? [];
-  const queuedDownloads = statusQuery.data?.queuedDownloads ?? [];
+  const activeDownloads = useMemo(
+    () => statusQuery.data?.activeDownloads ?? [],
+    [statusQuery.data?.activeDownloads]
+  );
+  const queuedDownloads = useMemo(
+    () => statusQuery.data?.queuedDownloads ?? [],
+    [statusQuery.data?.queuedDownloads]
+  );
   const hasQueueWork = activeDownloads.length > 0 || queuedDownloads.length > 0;
 
   const historyQuery = useQuery({
@@ -181,17 +195,19 @@ export function DownloadsScreen() {
   const sections = useMemo<Section[]>(
     () => [
       {
-        title: 'Queue',
+        kind: 'queue',
+        title: t('sectionQueue'),
         data: queueItems.slice(0, queueVisible),
         total: queueItems.length,
       },
       {
-        title: 'History',
+        kind: 'history',
+        title: t('sectionHistory'),
         data: history.slice(0, historyVisible),
         total: history.length,
       },
     ],
-    [queueItems, queueVisible, history, historyVisible]
+    [queueItems, queueVisible, history, historyVisible, t]
   );
 
   const loadMore = useCallback(() => {
@@ -219,7 +235,7 @@ export function DownloadsScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading downloads…</Text>
+        <Text style={styles.loadingText}>{t('loadingDownloads')}</Text>
       </View>
     );
   }
@@ -245,14 +261,16 @@ export function DownloadsScreen() {
         return (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{s.title}</Text>
-            {s.title === 'Queue' && (
+            {s.kind === 'queue' && (
               <Text style={styles.sectionMeta}>
                 Active: {activeDownloads.length} | Queued: {queuedDownloads.length}
               </Text>
             )}
             {s.total === 0 && (
               <Text style={styles.emptyText}>
-                {s.title === 'Queue' ? 'No active or queued downloads.' : 'No download history yet.'}
+                {s.kind === 'queue'
+                  ? t('emptyDownloadQueue')
+                  : t('emptyDownloadHistory')}
               </Text>
             )}
           </View>
@@ -272,7 +290,7 @@ export function DownloadsScreen() {
       }}
       renderItem={({ item, section }) => {
         const s = section as Section;
-        if (s.title === 'Queue') {
+        if (s.kind === 'queue') {
           const queueItem = item as QueueItem;
           const progress = formatProgress(queueItem.progress);
           return (

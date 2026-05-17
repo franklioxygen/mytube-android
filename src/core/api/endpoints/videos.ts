@@ -4,14 +4,21 @@
 
 import { apiGet, apiPost, apiPut, apiDelete } from '../client';
 import { buildInFlightKey } from '../inFlight';
+import {
+  VideoListSchema,
+  VideoSchema,
+  parseWithSchema,
+} from '../schemas';
 import type { Video, Comment, ViewIncrementResponse, RateResponse } from '../../../types';
 
-export function getVideos(): Promise<Video[]> {
-  return apiGet<Video[]>('/videos');
+export async function getVideos(): Promise<Video[]> {
+  const raw = await apiGet<Video[]>('/videos');
+  return parseWithSchema(VideoListSchema, raw, 'getVideos') as Video[];
 }
 
-export function getVideo(id: string): Promise<Video> {
-  return apiGet<Video>(`/videos/${id}`);
+export async function getVideo(id: string): Promise<Video> {
+  const raw = await apiGet<Video>(`/videos/${id}`);
+  return parseWithSchema(VideoSchema, raw, 'getVideo') as Video;
 }
 
 export function getAuthorChannelUrl(

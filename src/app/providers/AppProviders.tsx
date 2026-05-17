@@ -5,13 +5,14 @@
 
 import React from 'react';
 import { useColorScheme } from 'react-native';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider, MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
 import { AuthProvider, useAuth } from '../../core/auth/AuthContext';
-import { SettingsRepository, settingsQueryKeys } from '../../core/repositories';
+import { useSettingsQuery } from '../../core/repositories';
 import { SnackbarProvider } from './SnackbarProvider';
 import { LanguageProvider } from './LanguageProvider';
 import { SidebarProvider } from '../../features/home/context/SidebarContext';
+import { AppErrorBoundary } from '../components/AppErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,13 +57,7 @@ function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const { loading, loginRequired, hasValidSession } = useAuth();
   const canLoadSettingsTheme = !loading && (!loginRequired || hasValidSession);
 
-  const settingsQuery = useQuery({
-    queryKey: settingsQueryKeys.settings,
-    queryFn: () => SettingsRepository.getSettings(),
-    enabled: canLoadSettingsTheme,
-    retry: false,
-    staleTime: 60 * 1000,
-  });
+  const settingsQuery = useSettingsQuery({ enabled: canLoadSettingsTheme });
 
   const preferredMode = normalizeThemeMode(settingsQuery.data?.theme);
   const resolvedMode =
@@ -78,16 +73,20 @@ function AppThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AppThemeProvider>
-          <LanguageProvider>
-            <SidebarProvider>
-              <SnackbarProvider>{children}</SnackbarProvider>
-            </SidebarProvider>
-          </LanguageProvider>
-        </AppThemeProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AppThemeProvider>
+            <LanguageProvider>
+              <SidebarProvider>
+                <SnackbarProvider>{children}</SnackbarProvider>
+              </SidebarProvider>
+            </LanguageProvider>
+          </AppThemeProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }
+
+export { queryClient };
