@@ -27,6 +27,11 @@ export const api = axios.create({
 
 let onUnauthorized: (() => void) | null = null;
 
+/** CSRF token cache: captured from `x-csrf-token` response headers and
+ *  replayed on subsequent non-GET requests per backend CSRF double-submit pattern.
+ *  See backend/src/middleware/csrfMiddleware.ts for the server-side validation. */
+let csrfToken: string | null = null;
+
 export function setUnauthorizedHandler(handler: () => void): void {
   onUnauthorized = handler;
 }
@@ -69,11 +74,22 @@ function shouldTriggerReauth(
 
 api.interceptors.request.use(config => {
   config.baseURL = getRuntimeApiBaseUrl();
+  // Attach CSRF token to every request; backend ignores it on GET/HEAD/OPTIONS.
+  if (csrfToken) {
+    config.headers.set('X-CSRF-Token', csrfToken);
+  }
   return config;
 });
 
 api.interceptors.response.use(
-  response => response,
+  response => {
+    // Capture CSRF token from response header for subsequent state-changing requests.
+    const token = response.headers?.['x-csrf-token'];
+    if (typeof token === 'string' && token.length > 0) {
+      csrfToken = token;
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const config = (error.config ?? null) as (InternalAxiosRequestConfig & {
       _retryCount?: number;
